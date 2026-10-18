@@ -1,0 +1,313 @@
+/*
+ * 通用样式。
+ *
+ * 刻意**不用** Tailwind CDN 之类的外部依赖：机器人所在服务器不一定通外网，
+ * 样式库加载失败会让整张图变成一堆裸 HTML —— 自包含 CSS 最稳。
+ *
+ * 配色沿用 VALORANT 客户端：底色 #0F1923，强调色 #FF4655，胜利青绿、失败红。
+ */
+
+/*
+ * 中文字体随插件内置。
+ *
+ * ⚠️ 这一条是**必须**的，不是「好看一点」的优化：docker 里的 Yunzai 镜像
+ *    普遍只装了 DejaVu / Noto 的基础字体包，**没有中文字体** —— 不内置的话
+ *    整张图的中文会渲染成方块 □□□（数字和英文正常，所以特别容易被忽略，
+ *    以为是自己数据错了）。
+ *    字体：Noto Sans SC（SIL OFL 1.1），只带常用汉字子集，两个字重共 2.3MB。
+ *    路径相对本 CSS 文件，模板渲染出来的 HTML 引用 base.css 时也能解析到。
+ */
+@font-face {
+  font-family: 'ValorantCN';
+  src: url('../font/noto-sans-sc-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'ValorantCN';
+  src: url('../font/noto-sans-sc-700.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+
+:root {
+  --bg: #0f1923;
+  --bg-soft: #16232e;
+  --panel: #1b2a37;
+  --panel-2: #22333f;
+  --line: #2b3d4c;
+  --text: #ece8e1;
+  --text-dim: #8b9aa7;
+  --text-mute: #5f7180;
+  --accent: #ff4655;
+  --accent-soft: rgba(255, 70, 85, 0.16);
+  --win: #19e5a0;
+  --lose: #ff4655;
+  --gold: #f5d67b;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  width: 1180px;
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'ValorantCN', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', -apple-system, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+#container {
+  width: 1180px;
+  padding: 36px 40px 30px;
+  background:
+    radial-gradient(1200px 400px at 15% -10%, rgba(255, 70, 85, 0.16), transparent 60%),
+    radial-gradient(900px 300px at 95% 0%, rgba(12, 232, 232, 0.10), transparent 55%),
+    var(--bg);
+}
+
+/* ---------- 通用块 ---------- */
+.card {
+  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 18px 20px;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 26px 0 14px;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.section-title::before {
+  content: '';
+  width: 5px;
+  height: 20px;
+  border-radius: 3px;
+  background: var(--accent);
+}
+.section-title small {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-mute);
+}
+
+.row { display: flex; align-items: center; }
+.between { display: flex; align-items: center; justify-content: space-between; }
+.grow { flex: 1; }
+.gap8 { gap: 8px; } .gap12 { gap: 12px; } .gap16 { gap: 16px; } .gap20 { gap: 20px; }
+
+.dim { color: var(--text-dim); }
+.mute { color: var(--text-mute); }
+.tiny { font-size: 12px; }
+.small { font-size: 13px; }
+.big { font-size: 26px; font-weight: 700; }
+.num {
+  font-family: 'DIN Alternate', 'Bahnschrift', 'Helvetica Neue', Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 顶上的账号条 ---------- */
+.hero {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--bg-soft);
+}
+.hero-bg {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center 28%;
+  opacity: 0.32;
+}
+.hero-mask {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(11,20,28,0.94) 32%, rgba(11,20,28,0.55) 72%, rgba(11,20,28,0.2));
+}
+.hero-inner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 22px 26px;
+}
+.avatar {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  border: 3px solid var(--accent);
+  object-fit: cover;
+  background: var(--panel);
+  flex: none;
+}
+.name-row { display: flex; align-items: center; gap: 12px; }
+.player-name { font-size: 30px; font-weight: 800; letter-spacing: 0.5px; }
+.tag-chip {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 700;
+  border: 1px solid rgba(255,70,85,0.35);
+}
+.badge {
+  padding: 3px 10px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.level-badge {
+  padding: 3px 10px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #ff4655, #b8333f);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* ---------- 段位 ---------- */
+.rank-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: linear-gradient(135deg, rgba(255,70,85,0.10), rgba(255,255,255,0.02));
+}
+.rank-icon { width: 76px; height: 76px; object-fit: contain; flex: none; filter: drop-shadow(0 4px 10px rgba(0,0,0,0.45)); }
+.rank-name { font-size: 22px; font-weight: 800; }
+.rr-bar {
+  margin-top: 8px;
+  height: 8px;
+  width: 260px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+.rr-bar > i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #ff4655, #ff8b7a); }
+
+/* ---------- 数据格 ---------- */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+.stat {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 16px;
+  background: rgba(255,255,255,0.02);
+}
+.stat-label { font-size: 12.5px; color: var(--text-mute); letter-spacing: 0.6px; }
+.stat-value { font-size: 25px; font-weight: 800; margin-top: 2px; }
+.stat-sub { font-size: 12px; color: var(--text-mute); margin-top: 2px; }
+
+.high { color: var(--win); }
+.mid { color: var(--gold); }
+.low { color: var(--accent); }
+
+/* ---------- 列表 ---------- */
+.list-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.02);
+  margin-bottom: 10px;
+}
+.map-thumb {
+  width: 84px; height: 48px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  flex: none;
+}
+.agent-thumb { width: 46px; height: 46px; object-fit: contain; flex: none; }
+.result {
+  padding: 4px 12px;
+  border-radius: 8px;
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 1px;
+}
+.is-win { background: rgba(25, 229, 160, 0.14); color: var(--win); border: 1px solid rgba(25,229,160,0.32); }
+.is-lose { background: rgba(255, 70, 85, 0.14); color: var(--lose); border: 1px solid rgba(255,70,85,0.32); }
+.is-draw { background: rgba(139, 154, 167, 0.14); color: var(--text-dim); border: 1px solid var(--line); }
+
+.kv { text-align: center; min-width: 62px; }
+.kv-label { font-size: 11px; color: var(--text-mute); }
+.kv-value { font-size: 16px; font-weight: 700; }
+
+/* ---------- 特工 / 地图小卡 ---------- */
+.mini-card {
+  width: 132px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(255,255,255,0.02);
+  text-align: center;
+}
+.mini-pic { width: 100%; height: 92px; object-fit: cover; background: var(--panel); }
+.mini-pic.contain { object-fit: contain; padding: 6px; }
+.mini-name { font-size: 14px; font-weight: 700; padding: 6px 4px 2px; }
+.mini-foot { font-size: 12px; color: var(--text-mute); padding-bottom: 8px; }
+
+.bar {
+  height: 6px; border-radius: 999px; background: var(--panel-2); overflow: hidden; margin-top: 6px;
+}
+.bar > i { display: block; height: 100%; border-radius: 999px; }
+.bar.win > i { background: linear-gradient(90deg, #19e5a0, #7bf3d0); }
+.bar.kill > i { background: linear-gradient(90deg, #ff4655, #ffab6b); }
+
+/* ---------- 回合条 ---------- */
+.round-strip { display: flex; gap: 4px; flex-wrap: wrap; }
+.round-dot {
+  width: 16px; height: 16px; border-radius: 4px;
+  border: 1px solid rgba(255,255,255,0.18);
+}
+.round-dot.atk { border-radius: 50%; }
+.round-dot.is-win { background: var(--win); }
+.round-dot.is-lose { background: var(--accent); }
+
+/* ---------- 表格 ---------- */
+table.team { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.team th {
+  text-align: left; font-weight: 600; font-size: 12px; color: var(--text-mute);
+  padding: 8px 8px; border-bottom: 1px solid var(--line); letter-spacing: 0.4px;
+}
+table.team td { padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+table.team tr.self td { background: rgba(255, 70, 85, 0.10); }
+table.team td.c, table.team th.c { text-align: center; }
+.team-head {
+  display: flex; align-items: center; gap: 8px;
+  margin: 18px 0 6px; font-size: 16px; font-weight: 700;
+}
+
+/* ---------- 页脚 ---------- */
+.foot {
+  margin-top: 26px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  display: flex; justify-content: space-between;
+  font-size: 12px; color: var(--text-mute);
+}
+
+.empty { padding: 40px; text-align: center; color: var(--text-mute); }

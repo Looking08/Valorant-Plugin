@@ -1,0 +1,24 @@
+# 运行时数据（用户绑定、图片缓存、静态数据缓存）
+data/
+
+# 用户配置（含网关令牌，千万别提交）
+config/config/
+
+# 网关落盘的登录凭证（demo provider 会写，真实 provider 更应该放这里）
+bridge/.state/
+
+# 掌瓦抓包来的登录态与接口配置（含 cookie/token，绝对不能提交）
+bridge/mate.json
+
+# 一人一份的登录态（每个文件名就是一个 QQ 号，里面是 cookie + scene）
+bridge/accounts/
+
+# 依赖
+node_modules/
+
+# 系统/编辑器
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/

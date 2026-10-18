@@ -1,0 +1,206 @@
+{
+  "_readme": [
+    "复制成 bridge/mate.json 再填。这个文件只是模板，别把真凭证写在这里（会被提交）。",
+    "mate.json 是「基础配置」：接口路径 / 武器表 / 默认参数，所有人共用一份。",
+    "里面那份 login + role 只给 CLI 探针和自己用；群友的登录态各自存 bridge/accounts/<QQ>.json，由 #瓦导入 写入。",
+    "路径与参数来自 2026-10 掌瓦 2.9.0 的实测抓包，直接可用。",
+    "抓包方法见 bridge/providers/mateapp.md；填完跑 node bridge/providers/mateapp-cli.mjs 验活。",
+    "想手动给某人导入：node tools/har2cred.mjs 抓包.har --push --user=QQ --gateway=... --token=..."
+  ],
+  "baseUrl": "https://app.mval.qq.com",
+  "login": {
+    "cookie": "clientType=9; appid=10200; acctype=; openid=<填这里>; access_token=<填这里>; userId=<填这里>; accountType=2; tid=<填这里>",
+    "scene": "<填这里：career 列表/概览请求体里的 scene，v3_ 开头，约 175 字符>",
+    "sceneDetail": "<填这里：单局详情（回合）请求体里的 scene，v3_ 开头，约 91 字符；填不上就留空，会退回用 scene>"
+  },
+  "role": {
+    "uid": "JA-xxxxxxxxxxxxxxxx-xxxxxxxxxxxxxxxx",
+    "roleId": "",
+    "name": "你的游戏昵称",
+    "tag": "",
+    "zone": "codev"
+  },
+  "defaults": {
+    "seasonId": "",
+    "queueId": "255",
+    "gameMode": "101001"
+  },
+  "envelope": {
+    "okField": "result",
+    "okValues": [
+      0,
+      "0"
+    ],
+    "dataField": "data",
+    "msgField": "msg"
+  },
+  "endpoints": {
+    "profile": {
+      "method": "POST",
+      "path": "/go/codev/career/seasonoverview",
+      "query": {
+        "source_game_zone": "codev",
+        "game_zone": "codev"
+      },
+      "body": {
+        "scene": "{scene}",
+        "mode": "255",
+        "season": "",
+        "source_game_zone": "codev",
+        "game_zone": "codev"
+      }
+    },
+    "stat": {
+      "method": "POST",
+      "path": "/go/codev/career/record/statdata",
+      "query": {
+        "source_game_zone": "codev",
+        "game_zone": "codev"
+      },
+      "body": {
+        "scene": "{scene}",
+        "mode": "255",
+        "season": "",
+        "source_game_zone": "codev",
+        "game_zone": "codev"
+      }
+    },
+    "agents": {
+      "method": "POST",
+      "path": "/go/codev/career/performance/agent",
+      "query": {
+        "source_game_zone": "codev",
+        "game_zone": "codev"
+      },
+      "body": {
+        "scene": "{scene}",
+        "season_id": "{seasonId}",
+        "queue_id": "{queueId}",
+        "source_game_zone": "codev",
+        "game_zone": "codev"
+      }
+    },
+    "maps": {
+      "method": "POST",
+      "path": "/go/codev/career/performance/map",
+      "query": {
+        "source_game_zone": "codev",
+        "game_zone": "codev"
+      },
+      "body": {
+        "scene": "{scene}",
+        "season_id": "{seasonId}",
+        "queue_id": "{queueId}",
+        "source_game_zone": "codev",
+        "game_zone": "codev"
+      }
+    },
+    "weapons": {
+      "method": "POST",
+      "path": "/go/codev/career/performance/gun",
+      "query": {
+        "source_game_zone": "codev",
+        "game_zone": "codev"
+      },
+      "body": {
+        "scene": "{scene}",
+        "season_id": "{seasonId}",
+        "queue_id": "{queueId}",
+        "source_game_zone": "codev",
+        "game_zone": "codev"
+      }
+    },
+    "recent": {
+      "_note": "面板的 ACS 趋势条用：只要 battle_list[].score（每场 ACS）",
+      "method": "POST",
+      "path": "/go/codev/career/record/list",
+      "query": {
+        "source_game_zone": "codev",
+        "game_zone": "codev"
+      },
+      "body": {
+        "scene": "{scene}",
+        "baton": "",
+        "mode_filter": "",
+        "source_game_zone": "codev",
+        "game_zone": "codev"
+      }
+    },
+    "matches": {
+      "_note": "baton 是翻页游标，空串 = 第一页（10 条）；返回值 next_baton 用于下一页",
+      "method": "POST",
+      "path": "/go/codev/career/record/list",
+      "query": {
+        "source_game_zone": "codev",
+        "game_zone": "codev"
+      },
+      "body": {
+        "scene": "{scene}",
+        "baton": "{baton}",
+        "mode_filter": "{modeFilter}",
+        "source_game_zone": "codev",
+        "game_zone": "codev"
+      }
+    },
+    "match": {
+      "_note": "queue_id 用列表里的 game_mode_id（竞技=101），不是 101001",
+      "method": "POST",
+      "path": "/go/codev/career/record/scoreboard",
+      "query": {
+        "source_game_zone": "codev",
+        "game_zone": "codev"
+      },
+      "body": {
+        "scene": "{scene}",
+        "battle_id": "{battleId}",
+        "queue_id": "{queueId}",
+        "source_game_zone": "codev",
+        "game_zone": "codev"
+      }
+    },
+    "matchRounds": {
+      "_note": "game_mode 用列表里的 game_submode_id（竞技=101001）；这个接口认的是另一个 scene",
+      "method": "POST",
+      "path": "/go/codev/career/record/player/rounds",
+      "query": {
+        "source_game_zone": "codev",
+        "game_zone": "codev"
+      },
+      "body": {
+        "scene": "{sceneDetail}",
+        "battle_id": "{battleId}",
+        "game_mode": "{gameMode}",
+        "source_game_zone": "codev",
+        "game_zone": "codev"
+      }
+    },
+    "roundOverview": {
+      "_note": "可选：单回合的对手/枪械/技能明细，插件当前没用到，探针会打它",
+      "method": "POST",
+      "path": "/go/codev/career/record/player/roundoverview",
+      "query": {
+        "source_game_zone": "codev",
+        "game_zone": "codev"
+      },
+      "body": {
+        "scene": "{sceneDetail}",
+        "battle_id": "{battleId}",
+        "round_num": "{roundNum}",
+        "source_game_zone": "codev",
+        "game_zone": "codev"
+      }
+    }
+  },
+  "weapons": {
+    "_note": "武器数字 id 对不上时在这里覆盖，例：{ \"10504\": { \"name\": \"悍狼\", \"uuid\": \"\" } }",
+    "map": {}
+  },
+  "mvp": {
+    "_note": "列表接口不带 MVP，只能逐局查记分板的 detail.rank 反推（rank=1 即全场最佳）。关掉就只剩 D/A/SS 评价等级；记分板结果会缓存 30 分钟，点进详情直接复用。",
+    "lookup": true,
+    "limit": 20,
+    "concurrency": 4
+  },
+  "strictRole": true,
+  "allowShared": false
+}

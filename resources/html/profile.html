@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>无畏契约 · 数据面板</title>
+  <link rel="stylesheet" href="{{@res}}css/base.css">
+  <style>
+    .hero-inner { padding: 24px 28px; }
+    .split { display: flex; gap: 14px; }
+    .split > div { flex: 1; }
+    .agents-row, .maps-row { display: flex; gap: 12px; }
+    .trend { display: flex; align-items: flex-end; gap: 8px; height: 90px; }
+    .trend-col { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .trend-bar {
+      width: 22px; border-radius: 5px 5px 0 0;
+      background: linear-gradient(180deg, #ff6a72, #b8333f);
+    }
+    .trend-label { font-size: 11px; color: #5f7180; }
+  </style>
+</head>
+<body>
+<div id="container">
+
+  <!-- 头部：账号卡 -->
+  <div class="hero">
+    {{if account.card}}<div class="hero-bg" style="background-image:url('{{@account.card}}')"></div>{{/if}}
+    <div class="hero-mask"></div>
+    <div class="hero-inner">
+      {{if account.avatar}}
+      <img class="avatar" src="{{@account.avatar}}" alt="avatar">
+      {{/if}}
+      <div class="grow">
+        <div class="name-row">
+          <span class="player-name">{{account.name}}</span>
+          {{if account.tag}}<span class="tag-chip">#{{account.tag}}</span>{{/if}}
+        </div>
+        <div class="row gap8" style="margin-top:8px">
+          {{if account.level}}<span class="level-badge">Lv.{{account.level}}</span>{{/if}}
+          <span class="badge">{{account.region}}</span>
+          {{if rank.act}}<span class="badge">{{rank.act}}</span>{{/if}}
+        </div>
+        {{if account.title}}<div class="small dim" style="margin-top:8px">「{{account.title}}」</div>{{/if}}
+      </div>
+      <div style="text-align:right">
+        <div class="tiny mute">生涯场次</div>
+        <div class="big num">{{stats.matches}}</div>
+        <div class="tiny mute">胜率 <span class="{{stats.winRateLevel}}">{{stats.winRateText}}</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 段位 -->
+  <div class="split" style="margin-top:16px">
+    <div class="rank-card">
+      {{if rank.icon}}<img class="rank-icon" src="{{@rank.icon}}" alt="rank">{{/if}}
+      <div>
+        <div class="tiny mute">当前段位</div>
+        <div class="rank-name">{{rank.name}}</div>
+        <div class="row gap8" style="margin-top:2px">
+          {{if rank.rr}}<span class="small dim">竞技分 {{rank.rr}}</span>
+          <div class="rr-bar"><i style="width:{{rank.rr}}%"></i></div>
+          {{else}}<span class="small dim">数据源未提供竞技分</span>{{/if}}
+        </div>
+      </div>
+    </div>
+    <div class="rank-card">
+      {{if peak.icon}}<img class="rank-icon" src="{{@peak.icon}}" alt="peak">{{/if}}
+      <div>
+        <div class="tiny mute">历史最高</div>
+        <div class="rank-name">{{peak.name}}</div>
+        <div class="small dim" style="margin-top:2px">{{peak.act || '—'}}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 核心数据 -->
+  <div class="section-title">核心数据 <small>本账号汇总</small></div>
+  <div class="grid">
+    <div class="stat">
+      <div class="stat-label">K/D</div>
+      <div class="stat-value num">{{stats.kd}}</div>
+      <div class="stat-sub">{{stats.kills}} K / {{stats.deaths}} D / {{stats.assists}} A</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">平均战斗得分 ACS</div>
+      <div class="stat-value num">{{stats.acs}}</div>
+      <div class="stat-sub">ADR {{stats.adr}}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">爆头率</div>
+      <div class="stat-value num">{{stats.headshotText}}</div>
+      <div class="stat-sub">共 {{stats.kills}} 击杀</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">KAST</div>
+      <div class="stat-value num">{{stats.kastText}}</div>
+      <div class="stat-sub">有效参与回合占比</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">胜 / 负</div>
+      <div class="stat-value num"><span class="high">{{stats.wins}}</span> / <span class="low">{{stats.losses}}</span></div>
+      <div class="stat-sub">胜率 <span class="{{stats.winRateLevel}}">{{stats.winRateText}}</span></div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">总回合数</div>
+      <div class="stat-value num">{{stats.rounds}}</div>
+      <div class="stat-sub">已统计场次 {{stats.matches}}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">游戏时长</div>
+      <div class="stat-value num">{{stats.playtime}}</div>
+      <div class="stat-sub">小时</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">ADR / 回合</div>
+      <div class="stat-value num">{{stats.adr}}</div>
+      <div class="stat-sub">场均伤害</div>
+    </div>
+  </div>
+
+  <!-- 常用特工 -->
+  {{if agents.length}}
+  <div class="section-title">常用特工 <small>Top {{agents.length}}</small></div>
+  <div class="agents-row">
+    {{each agents agent}}
+    <div class="mini-card">
+      {{if agent.portrait}}<img class="mini-pic" src="{{@agent.portrait}}" alt="">{{else}}<div class="mini-pic"></div>{{/if}}
+      <div class="mini-name">{{agent.name}}</div>
+      <div class="mini-foot">
+        <div><span class="{{agent.winRateLevel}}">{{agent.winRateText}}</span> 胜率</div>
+        <div class="dim">{{agent.matches}} 场 · K/D {{agent.kd}}</div>
+      </div>
+      <div style="padding:0 8px 8px"><div class="bar win"><i style="width:{{agent.winRatePercent}}%"></i></div></div>
+    </div>
+    {{/each}}
+  </div>
+  {{/if}}
+
+  <!-- 地图 -->
+  {{if maps.length}}
+  <div class="section-title">主要地图 <small>胜率概览</small></div>
+  <div class="maps-row">
+    {{each maps map}}
+    <div class="mini-card" style="width:150px">
+      {{if map.listView}}<img class="mini-pic" src="{{@map.listView}}" alt="">{{else}}<div class="mini-pic"></div>{{/if}}
+      <div class="mini-name">{{map.name}}</div>
+      <div class="mini-foot"><span class="{{map.winRateLevel}}">{{map.winRateText}}</span>{{if map.matches}} · {{map.matches}} 场{{/if}}</div>
+    </div>
+    {{/each}}
+  </div>
+  {{/if}}
+
+  <!-- 近期趋势 -->
+  {{if trend.length}}
+  <div class="section-title">近期战斗得分 <small>每场 ACS</small></div>
+  <div class="card">
+    <div class="trend">
+      {{each trend t}}
+      <div class="trend-col">
+        <div class="tiny" style="color:#8b9aa7">{{t.value}}</div>
+        <div class="trend-bar" style="height:{{t.height}}px"></div>
+        <div class="trend-label">{{t.label}}</div>
+      </div>
+      {{/each}}
+    </div>
+  </div>
+  {{/if}}
+
+  <div class="foot">
+    <span>无畏契约插件 · 数据面板</span>
+    <span>{{provider ? '数据源：' + provider : ''}} · 更新于 {{updatedAt}}</span>
+  </div>
+</div>
+</body>
+</html>

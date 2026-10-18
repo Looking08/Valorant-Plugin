@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>无畏契约 · 单局详情</title>
+  <link rel="stylesheet" href="{{@res}}css/base.css">
+  <style>
+    .hero {
+      min-height: 190px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 26px 30px;
+    }
+    /* 详情页想把地图原画露出来一点，比首页的账号卡更亮 */
+    .hero .hero-bg { opacity: 0.5; }
+    .hero .hero-mask { background: linear-gradient(90deg, rgba(11,20,28,0.92) 30%, rgba(11,20,28,0.45) 70%, rgba(11,20,28,0.15)); }
+    .score-wrap { display: flex; align-items: center; gap: 24px; }
+    .team-score { font-size: 64px; font-weight: 900; letter-spacing: 2px; }
+    .vs { font-size: 22px; color: var(--text-mute); }
+    .round-box { padding: 16px 20px; }
+
+    /* ---- 敌我识别 ----
+       Blue / Red 是**阵营**（攻守轮换不会变），所以这里不写死「蓝=我方」：
+       颜色点标阵营，side 标敌我，两套信息分开用，我在红队时也不会认错。 */
+    .team-dot {
+      width: 8px; height: 8px; border-radius: 50%; flex: none; margin-right: 2px;
+    }
+    .team-dot.blue { background: #22c3e6; box-shadow: 0 0 6px rgba(34,195,230,0.65); }
+    .team-dot.red { background: #ff4655; box-shadow: 0 0 6px rgba(255,70,85,0.65); }
+
+    /* 我方整行轻微提亮 + 左侧色条，扫一眼就知道哪 5 个是队友 */
+    tr.prow.mine td { background: rgba(255,255,255,0.035); }
+    tr.prow.mine td:first-child { box-shadow: inset 3px 0 0 rgba(255,255,255,0.28); }
+
+    .me-chip, .mate-chip {
+      display: inline-block; margin-left: 5px; padding: 0 5px;
+      border-radius: 3px; font-size: 10px; font-weight: 700; vertical-align: 1px;
+    }
+    .me-chip { background: #ff4655; color: #fff; }
+    .mate-chip { background: rgba(255,255,255,0.14); color: #cfd8df; }
+
+    .mvp-chip {
+      display: inline-block; padding: 2px 8px; border-radius: 5px;
+      background: linear-gradient(180deg, #ffd76e, #dfa32b);
+      color: #2b1c00; font-size: 13px; font-weight: 800; letter-spacing: 0.8px;
+      box-shadow: 0 0 10px rgba(255,200,80,0.35);
+    }
+    .rank-badge { color: var(--text-mute); font-size: 13px; font-weight: 600; }
+
+    /* 图例：颜色点 + 文字，避免纯色块被当成装饰 */
+    .legend { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-mute); }
+    .legend + .legend { margin-left: 14px; }
+  </style>
+</head>
+<body>
+<div id="container">
+
+  <div class="hero">
+    {{if mapIcon}}<div class="hero-bg" style="background-image:url('{{@mapIcon}}')"></div>{{/if}}
+    <div class="hero-mask"></div>
+    <div class="hero-inner" style="width:100%">
+      <div class="grow">
+        <div class="tiny mute">对局详情</div>
+        <div class="player-name">{{mapName}}</div>
+        <div class="row gap8" style="margin-top:8px">
+          <span class="badge">{{mode}}</span>
+          <span class="badge">{{lengthText}}</span>
+          <span class="badge">{{dateText}}</span>
+        </div>
+      </div>
+      <div style="text-align:right">
+        <div class="row" style="justify-content:flex-end; gap:14px; align-items:center">
+          {{if isMvp}}<span class="mvp-chip">MVP</span>
+          {{else}}{{if myRank}}<span class="rank-badge">全场第 {{myRank}}</span>{{/if}}{{/if}}
+          <span class="result {{cls}}" style="font-size:16px">{{resultText}}</span>
+          <div class="score-wrap">
+            <span class="team-score num {{cls === 'is-win' ? 'high' : ''}}">{{score}}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {{if rounds.length}}
+  <div class="section-title">回合走势 <small>圆形为进攻方，方形为防守方</small></div>
+  <div class="card round-box">
+    <div class="round-strip">
+      {{each rounds r index}}
+      <div class="round-dot {{r.side === 'atk' ? 'atk' : ''}} {{r.cls}}"></div>
+      {{/each}}
+    </div>
+  </div>
+  {{/if}}
+
+  <div class="section-title">
+    双方数据
+    <small>
+      <span class="legend"><i class="team-dot blue" style="display:inline-block"></i>蓝队{{myTeam === 'blue' ? '（我方）' : '（敌方）'}}</span>
+      <span class="legend"><i class="team-dot red" style="display:inline-block"></i>红队{{myTeam === 'red' ? '（我方）' : '（敌方）'}}</span>
+    </small>
+  </div>
+  <div class="card">
+    <table class="team">
+      <thead>
+        <tr>
+          <th style="width:180px">玩家</th>
+          <th class="c">K</th>
+          <th class="c">D</th>
+          <th class="c">A</th>
+          <th class="c">K/D</th>
+          <th class="c">ACS</th>
+          <th class="c">经济</th>
+          <th class="c">爆头</th>
+          <th class="c">首杀</th>
+          <th class="c">安装</th>
+          <th class="c">拆除</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{each players p}}
+        <tr class="prow {{p.side}}">
+          <td>
+            <div class="row gap8">
+              <span class="team-dot {{p.team}}"></span>
+              {{if p.agentIcon}}<img class="agent-thumb" style="width:34px;height:34px" src="{{@p.agentIcon}}" alt="">{{/if}}
+              <div>
+                <div style="font-weight:600">{{p.id}}{{if p.isSelf}}<span class="me-chip">我</span>{{else}}{{if p.side === 'mine'}}<span class="mate-chip">队友</span>{{/if}}{{/if}}</div>
+                <div class="tiny mute">{{p.agent}}</div>
+              </div>
+            </div>
+          </td>
+          <td class="c num">{{p.kills}}</td>
+          <td class="c num">{{p.deaths}}</td>
+          <td class="c num">{{p.assists}}</td>
+          <td class="c num">{{p.kd}}</td>
+          <td class="c num">{{p.acs}}</td>
+          <td class="c num">{{p.econ}}</td>
+          <td class="c num">{{p.headshotText}}</td>
+          <td class="c num">{{p.firstBloods}}</td>
+          <td class="c num">{{p.plants}}</td>
+          <td class="c num">{{p.defuses}}</td>
+        </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="foot">
+    <span>无畏契约插件 · 对局 {{matchId}}</span>
+    <span>{{provider ? '数据源：' + provider : ''}} · 生成于 {{updatedAt}}</span>
+  </div>
+</div>
+</body>
+</html>

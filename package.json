@@ -1,0 +1,40 @@
+{
+    "name": "valorant-plugin",
+    "version": "0.2.0",
+    "description": "适用于 TRSS-Yunzai / Yunzai V3 的无畏契约（VALORANT，含手游国服掌瓦）战绩查询插件：数据面板 / 战绩列表 / 单局详情 / 枪械熟练度 / 一人一份登录态",
+    "author": "Looking08",
+    "license": "MIT",
+    "type": "module",
+    "engines": {
+        "node": ">=18.0.0"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/Looking08/Valorant-Plugin.git"
+    },
+    "homepage": "https://github.com/Looking08/Valorant-Plugin#readme",
+    "bugs": {
+        "url": "https://github.com/Looking08/Valorant-Plugin/issues"
+    },
+    "keywords": [
+        "yunzai",
+        "trss",
+        "yunzai-plugin",
+        "valorant",
+        "无畏契约",
+        "掌上无畏契约"
+    ],
+    "scripts": {
+        "bridge": "node bridge/server.mjs",
+        "probe": "node bridge/providers/mateapp-cli.mjs",
+        "cred": "node tools/har2cred.mjs",
+        "test:parse": "node test/parse-payload.mjs"
+    },
+    "dependencies": {
+        "yaml": "^2.3.4"
+    },
+    "imports": {
+        "#components": "./components/index.js",
+        "#utils": "./utils/index.js"
+    }
+}

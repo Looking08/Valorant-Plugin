@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>无畏契约 · 最近战绩</title>
+  <link rel="stylesheet" href="{{@res}}css/base.css">
+  <style>
+    .hero-bar {
+      display: flex; align-items: center; gap: 18px;
+      padding: 18px 22px; border-radius: 16px;
+      border: 1px solid var(--line);
+      background: linear-gradient(120deg, rgba(255,70,85,0.14), rgba(255,255,255,0.02));
+    }
+    .hero-bar img { width: 64px; height: 64px; border-radius: 50%; border: 2px solid var(--accent); object-fit: cover; }
+    .meta { display: flex; align-items: center; gap: 10px; flex: none; }
+    .score-big { font-size: 24px; font-weight: 800; letter-spacing: 0.5px; white-space: nowrap; }
+    .st.c { text-align: center; min-width: 68px; }
+    .st-label { font-size: 11px; color: var(--text-mute); }
+    .st-value { font-size: 17px; font-weight: 700; }
+
+    /* 本局全场最佳：金色，跟「胜利/失败」的红绿区分开，一眼能扫到 */
+    .mvp-chip {
+      display: inline-block; margin-left: 6px; padding: 1px 6px;
+      border-radius: 4px; vertical-align: 1px;
+      background: linear-gradient(180deg, #ffd76e, #dfa32b);
+      color: #2b1c00; font-size: 11px; font-weight: 800; letter-spacing: 0.6px;
+      box-shadow: 0 0 8px rgba(255,200,80,0.35);
+    }
+    /* 不是 MVP 但知道名次时给个低调的「#3」，信息量比留空高 */
+    .rank-chip { margin-left: 6px; color: #8b9aa7; font-size: 11px; font-weight: 600; vertical-align: 1px; }
+  </style>
+</head>
+<body>
+<div id="container">
+
+  <div class="hero-bar">
+    {{if account.card}}<img src="{{@account.card}}" alt="card">{{/if}}
+    <div class="grow">
+      <div class="row" style="gap:12px">
+        <span class="player-name" style="font-size:24px">{{account.name || account.id}}</span>
+        <span class="badge">{{account.region}}</span>
+      </div>
+      <div class="small mute" style="margin-top:4px">{{account.id}} · 最近 {{count}} 场</div>
+    </div>
+    <div style="text-align:right; min-width:220px">
+      <div class="row" style="justify-content:flex-end; gap:16px">
+        <div class="meta">
+          <div>
+            <div class="tiny mute">战绩</div>
+            <div class="st-value"><span class="high">{{summary.wins}}</span>胜 <span class="low">{{summary.losses}}</span>负</div>
+          </div>
+        </div>
+        <div class="meta">
+          <div>
+            <div class="tiny mute">区间胜率</div>
+            <div class="st-value">{{summary.winRateText}}</div>
+          </div>
+        </div>
+        <div class="meta">
+          <div>
+            <div class="tiny mute">均值 ACS</div>
+            <div class="st-value">{{summary.acs}}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title">对局列表 <small>发送 #瓦战绩详情 序号 查看单局详情</small></div>
+
+  {{if list.length}}
+    {{each list m}}
+    <div class="list-row">
+      <div class="tiny mute" style="width:26px; text-align:center">{{m.index}}</div>
+      {{if m.mapIcon}}<img class="map-thumb" src="{{@m.mapIcon}}" alt="">{{/if}}
+      <div style="width:150px">
+        <div class="row" style="align-items:center; gap:0">
+          <span style="font-weight:700">{{m.map}}</span>
+          {{if m.mvp}}<span class="mvp-chip">MVP</span>
+          {{else}}{{if m.rankInMatch}}<span class="rank-chip">全场#{{m.rankInMatch}}</span>{{/if}}{{/if}}
+        </div>
+        <div class="tiny mute">{{m.mode}}</div>
+      </div>
+      <div style="width:84px">
+        <span class="result {{m.cls}}">{{m.resultText}}</span>
+      </div>
+      <div style="width:96px">
+        <div class="score-big num">{{m.score}}</div>
+      </div>
+      {{if m.agentIcon}}<img class="agent-thumb" src="{{@m.agentIcon}}" alt="">{{/if}}
+      <div style="width:82px">
+        <div style="font-weight:700">{{m.agent}}</div>
+        <div class="tiny mute">特工</div>
+      </div>
+      <div class="st c"><div class="st-label">K/D/A</div><div class="st-value num">{{m.kills}}/{{m.deaths}}/{{m.assists}}</div></div>
+      <div class="st c"><div class="st-label">ACS</div><div class="st-value num">{{m.acs}}</div></div>
+      <div class="st c"><div class="st-label">ADR</div><div class="st-value num">{{m.adr}}</div></div>
+      <div class="st c"><div class="st-label">KD比</div><div class="st-value num">{{m.kd}}</div></div>
+      <div class="st c"><div class="st-label">爆头率</div><div class="st-value num">{{m.headshotText}}</div></div>
+      <div style="text-align:right; min-width:88px; white-space:nowrap">
+        <div class="small dim">{{m.lengthText}}</div>
+        <div class="tiny mute">{{m.timeText}}</div>
+      </div>
+    </div>
+    {{/each}}
+  {{else}}
+    <div class="empty">这段时间内没有查到对局记录</div>
+  {{/if}}
+
+  <div class="foot">
+    <span>无畏契约插件 · 战绩查询</span>
+    <span>{{provider ? '数据源：' + provider : ''}} · 更新于 {{updatedAt}}</span>
+  </div>
+</div>
+</body>
+</html>

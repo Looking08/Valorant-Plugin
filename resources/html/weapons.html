@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>无畏契约 · 枪械熟练度</title>
+  <link rel="stylesheet" href="{{@res}}css/base.css">
+  <style>
+    .top-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 22px; border-radius: 16px;
+      border: 1px solid var(--line);
+      background: linear-gradient(120deg, rgba(255,70,85,0.14), rgba(255,255,255,0.02));
+    }
+    .w-row {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 14px; margin-bottom: 8px;
+      border-radius: 12px; border: 1px solid var(--line);
+      background: rgba(255,255,255,0.02);
+    }
+    .w-icon { width: 108px; height: 42px; object-fit: contain; flex: none; }
+    .w-cell { text-align: center; white-space: nowrap; }
+    .w-label { font-size: 11px; color: var(--text-mute); }
+    .w-value { font-size: 15px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body>
+<div id="container">
+
+  <div class="top-bar">
+    <div class="row" style="gap:16px">
+      {{if account.card}}<img src="{{@account.card}}" style="width:60px;height:60px;border-radius:50%;border:2px solid var(--accent);object-fit:cover" alt="card">{{/if}}
+      <div>
+        <div class="player-name" style="font-size:24px">{{account.name || account.id}}</div>
+        <div class="small mute">{{account.id}} · {{account.region}} {{season ? '· ' + season : ''}}</div>
+      </div>
+    </div>
+    <div class="row" style="gap:20px; text-align:right">
+      <div><div class="tiny mute">武器种类</div><div class="w-value num">{{summary.kinds}}</div></div>
+      <div><div class="tiny mute">总击杀</div><div class="w-value num">{{summary.totalKills}}</div></div>
+      <div><div class="tiny mute">总伤害</div><div class="w-value num">{{summary.totalDamage}}</div></div>
+      <div><div class="tiny mute">综合爆头率</div><div class="w-value num">{{summary.headshotText}}</div></div>
+    </div>
+  </div>
+
+  <div class="section-title">枪械数据 <small>按{{sortLabel}}降序 · 共 {{list.length}} 把</small></div>
+
+  {{if list.length}}
+    {{each list w index}}
+    <div class="w-row">
+      <div style="width:24px; text-align:center" class="tiny mute">{{index + 1}}</div>
+      {{if w.icon}}<img class="w-icon" src="{{@w.icon}}" alt="">{{/if}}
+      <div style="width:140px">
+        <div style="font-weight:700">{{w.name}}</div>
+        <div class="tiny mute">{{w.category}}{{w.cost ? ' · ' + w.cost + ' 信誉' : ''}}</div>
+      </div>
+      <div style="width:150px">
+        <div class="row between tiny"><span class="mute">击杀</span><span class="num">{{w.killsText}}</span></div>
+        <div class="bar kill"><i style="width:{{w.barWidth}}%"></i></div>
+      </div>
+      <div class="w-cell" style="width:74px"><div class="w-label">爆头率</div><div class="w-value num">{{w.headshotText}}</div></div>
+      <div class="w-cell" style="width:120px"><div class="w-label">爆/身/腿</div><div class="w-value num" style="font-size:13px">{{w.hitsText}}</div></div>
+      <div class="w-cell" style="width:94px"><div class="w-label">总伤害</div><div class="w-value num">{{w.damageText}}</div></div>
+      <div class="w-cell" style="width:70px"><div class="w-label">每发伤害</div><div class="w-value num">{{w.damagePerHitText}}</div></div>
+      <div class="w-cell" style="width:78px"><div class="w-label">每回合击杀</div><div class="w-value num">{{w.killsPerRoundText}}</div></div>
+      <div class="w-cell" style="width:72px"><div class="w-label">使用回合</div><div class="w-value num">{{w.roundsUsed}}</div></div>
+    </div>
+    {{/each}}
+  {{else}}
+    <div class="empty">没有查到枪械数据</div>
+  {{/if}}
+
+  <div class="foot">
+    <span>无畏契约插件 · 枪械熟练度</span>
+    <span>{{provider ? '数据源：' + provider : ''}} · 更新于 {{updatedAt}}</span>
+  </div>
+</div>
+</body>
+</html>

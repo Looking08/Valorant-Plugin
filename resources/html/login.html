@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>无畏契约插件 · 扫码登录</title>
+  <link rel="stylesheet" href="{{@res}}css/base.css">
+  <style>
+    .head {
+      display: flex; align-items: center; gap: 18px;
+      padding: 20px 26px; border-radius: 16px; margin-bottom: 20px;
+      border: 1px solid var(--line);
+      background: linear-gradient(120deg, rgba(255,70,85,0.16), rgba(255,255,255,0.02));
+    }
+    .platform {
+      padding: 4px 14px; border-radius: 999px;
+      font-size: 14px; font-weight: 800; letter-spacing: 1px;
+      color: #06121a; background: {{accent}};
+    }
+
+    .main { display: flex; gap: 26px; align-items: stretch; }
+
+    /* 二维码必须放在**纯白**背景上：一是对比度不够扫不出来，
+       二是很多机型会把深色底当成反色二维码。留白(quiet zone)也不能省。 */
+    .qr-card {
+      width: 392px; flex: none;
+      padding: 22px;
+      border-radius: 18px;
+      background: #fff;
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+    /* 各平台给的码尺寸不一样（QQ 111px、微信 301px），放大倍数不是整数时
+       pixelated 会让模块宽度忽 5 忽 6 像素，反而更难扫 —— 交给浏览器平滑缩放。 */
+    .qr-img { width: 348px; height: 348px; display: block; }
+    .qr-missing {
+      width: 348px; height: 348px;
+      display: flex; align-items: center; justify-content: center; text-align: center;
+      color: #b8333f; font-size: 15px; line-height: 1.7;
+      border: 2px dashed #ffc2c7; border-radius: 12px; padding: 20px;
+    }
+    .qr-caption {
+      margin-top: 14px; text-align: center;
+      font-size: 13px; color: #5f7180; letter-spacing: 0.5px;
+    }
+
+    .side { flex: 1; display: flex; flex-direction: column; gap: 16px; }
+
+    .steps { margin: 0; padding: 0; list-style: none; counter-reset: step; }
+    .steps li {
+      counter-increment: step;
+      position: relative;
+      padding: 11px 16px 11px 54px;
+      margin-bottom: 9px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.025);
+      font-size: 15px;
+      line-height: 1.45;
+    }
+    .steps li::before {
+      content: counter(step);
+      position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+      width: 26px; height: 26px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 800;
+      color: #0f1923; background: {{accent}};
+    }
+    .steps li:last-child { margin-bottom: 0; }
+
+    .meta { display: flex; gap: 10px; flex-wrap: wrap; }
+    .meta-chip {
+      padding: 7px 14px; border-radius: 10px;
+      border: 1px solid var(--line); background: rgba(255,255,255,0.03);
+      font-size: 13px; color: var(--text-dim);
+    }
+    .meta-chip b { color: var(--text); font-weight: 700; }
+
+    .tip {
+      padding: 12px 16px; border-radius: 12px;
+      border: 1px solid rgba(245, 214, 123, 0.28);
+      background: rgba(245, 214, 123, 0.07);
+      font-size: 13px; color: #e8d8a6; line-height: 1.7;
+    }
+    .tip b { color: var(--gold); }
+    .cmd-inline {
+      /* ⚠️ 一定要把 ValorantCN 放第一位。仿写这种「代码块」样式时很容易只写
+         DIN / Helvetica / Arial —— 容器里没有系统中文字体，中文会整段变豆腐块。 */
+      font-family: 'ValorantCN', 'DIN Alternate', 'Helvetica Neue', Arial, sans-serif;
+      padding: 1px 7px; border-radius: 5px;
+      background: rgba(255,255,255,0.08); color: var(--text);
+      /* 指令整体不折行，否则「#瓦绑定 名称#标签」会被拆成两行，看着像两段 */
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+<div id="container">
+
+  <div class="head">
+    <div class="grow">
+      <div class="player-name" style="font-size:28px">扫码登录</div>
+      <div class="small mute" style="margin-top:4px">用手机确认身份，省掉手动填「名称#标签」</div>
+    </div>
+    <div class="platform">{{typeLabel}}</div>
+  </div>
+
+  <div class="main">
+    <div class="qr-card">
+      {{if hasQr}}
+      <img class="qr-img" src="{{@qr}}" alt="登录二维码">
+      <div class="qr-caption">二维码 {{expireIn}} 秒内有效</div>
+      {{else}}
+      <div class="qr-missing">
+        网关没有返回二维码图片<br>
+        重新发一次指令，或换成 QQ 扫码试试
+      </div>
+      {{/if}}
+    </div>
+
+    <div class="side">
+      <div class="card" style="padding:16px 20px">
+        <div class="section-title" style="margin:0 0 12px">扫描步骤 <small>手机端操作</small></div>
+        <ol class="steps">
+          {{each steps s}}
+          <li>{{s}}</li>
+          {{/each}}
+        </ol>
+      </div>
+
+      <div class="meta">
+        <div class="meta-chip">会话 <b>{{shortId}}</b></div>
+        {{if autoPoll}}
+        <div class="meta-chip">自动盯 <b>{{pollSeconds}} 秒</b></div>
+        {{else}}
+        <div class="meta-chip">自动盯 <b>已关闭</b></div>
+        {{/if}}
+        <div class="meta-chip">中途退出 <b>#瓦取消登录</b></div>
+      </div>
+
+      <div class="tip">
+        <b>扫完不用再发指令</b> —— 机器人会自己盯着状态，扫了会说一声，确认了会告诉你登录成谁。
+        {{if !autoPoll}}自动盯已关闭，需要手动发 <span class="cmd-inline">#瓦登录状态</span> 查结果。{{/if}}
+        <br>
+        二维码没反应可以重新发 <span class="cmd-inline">#瓦扫码登录</span> 换一张；
+        一直卡在「等待扫码」多半是被平台风控拦了，这时用 <span class="cmd-inline">#瓦绑定 名称#标签</span> 更稳。
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <span>二维码由你部署的网关生成，插件只负责转发与轮询</span>
+    <span>生成于 {{updatedAt}}</span>
+  </div>
+</div>
+</body>
+</html>
