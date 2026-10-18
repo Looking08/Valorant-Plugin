@@ -5,19 +5,14 @@
  * （cURL、原始 HTTP、纯 body、只给了 cookie……）。这些分支全靠字符串处理，
  * 改一行就可能悄悄坏掉，所以用真实 HAR 拼出各种形状来跑。
  *
- * 用法（**在云崽根目录**执行，或本机起一个假 plugin 桩）：
- *   node plugins/Valorant-Plugin/test/parse-payload.mjs /path/to/抓包.har
+ * 用法（**在哪都能跑**，不依赖云崽）：`pnpm test:parse`
+ *   node test/parse-payload.mjs /path/to/抓包.har
  *
  * 不传 HAR 时用内置的假数据（结构照抄真实抓包），只验解析逻辑。
  */
 import fs from 'node:fs'
 
-globalThis.plugin = class {
-  constructor (cfg) { Object.assign(this, cfg) }
-}
-globalThis.logger = { info () {}, debug () {}, warn () {}, error () {}, mark () {} }
-
-const { parsePayload } = await import('../apps/login.js')
+const { parsePayload } = await import('../utils/payload.js')
 
 /** 从 HAR 里捞一条指定路径的请求，拼成 cURL */
 function curlFromHar (har, suffix) {

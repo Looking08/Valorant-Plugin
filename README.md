@@ -347,6 +347,7 @@ Valorant-Plugin/
 │   ├── account.js           # 「这次查谁」的统一解析
 │   ├── asset.js             # 远程图落地缓存 → 模板相对路径
 │   ├── format.js            # 数值/时间格式化（纯函数，不抛异常）
+│   ├── payload.js           # 粘贴内容解析（纯函数、零框架依赖，可单测）
 │   ├── cache.js             # TTL 缓存 + 并发合流
 │   └── render.js            # 出图封装（含失败判空）
 ├── apps/                    # 一个文件一组指令
@@ -389,10 +390,12 @@ curl -s -H 'Authorization: Bearer valtest' 'http://127.0.0.1:7820/v1/profile?use
 curl -s -H 'Authorization: Bearer valtest' 'http://127.0.0.1:7820/v1/profile?user=99999'   # 409 NOT_BOUND
 ```
 
-粘贴解析器有独立单测（cURL / 原始 HTTP / pipe / key=value / 只 cookie / 垃圾，7 种形状）：
+粘贴解析器有独立单测（cURL / 原始 HTTP / pipe / key=value / 只 cookie / 垃圾，7 种形状）。
+解析逻辑在 `utils/payload.js`，**零框架依赖，在哪都能跑**：
 
 ```bash
 cd plugins/Valorant-Plugin && pnpm test:parse
+# 或直接 node test/parse-payload.mjs /path/to/你的.har，用真实抓包再过一遍
 ```
 
 ---
