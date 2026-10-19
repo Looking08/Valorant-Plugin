@@ -9,8 +9,9 @@ import {
   getProfile,
   agentOf,
   mapOf,
-  resolveAccount,
+  resolveTarget,
   NeedBind,
+  UnknownPeer,
   asset,
   assets,
   GatewayError,
@@ -44,9 +45,9 @@ export class ValorantProfile extends plugin {
 
     let account
     try {
-      account = resolveAccount(e, raw).account
+      account = (await resolveTarget(e, raw)).account
     } catch (error) {
-      if (error instanceof NeedBind) await e.reply(error.message)
+      if (error instanceof NeedBind || error instanceof UnknownPeer) await e.reply(error.message)
       else throw error
       return true
     }

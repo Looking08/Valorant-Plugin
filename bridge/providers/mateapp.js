@@ -52,6 +52,8 @@ import {
   normalizeUser,
   CONFIG_PATH
 } from '../creds.mjs'
+import fs from 'node:fs'
+import path from 'node:path'
 
 const TIMEOUT = Number(process.env.MATE_TIMEOUT) || 20000
 
@@ -436,7 +438,7 @@ export async function callEndpoint (name, extra = {}, preset = null) {
   const raw = json?.[envelope.okField]
   if (!accepted.includes(String(raw))) {
     const msg = String(json?.[envelope.msgField] || json?.err_msg || '没有说明原因').trim()
-    const authish = /登录|login|token|凭证|鉴权|expired|auth|scene/i.test(msg)
+    const authish = /登录|login|token|凭证|鉴权|expired|auth|scene|隐私/i.test(msg)
     throw upstreamError(
       `掌瓦接口返回失败（${envelope.okField}=${raw === undefined ? '缺失' : raw}）：${msg || '没有说明原因'}`,
       authish ? 'UPSTREAM_AUTH' : 'NOT_FOUND'
@@ -599,11 +601,143 @@ async function attachRanks (list, rows, config) {
 
 /* ---------------- provider ---------------- */
 
+/* ---------------- 同场玩家索引 ---------------- */
+
+/**
+ * 为什么能查到别人：掌瓦的 `career/*` 接口**只认 scene**，而每个人的 scene
+ * 会被服务端发给同场十个人（`record/scoreboard` 返回的每行都带一个 `scene`）。
+ * 也就是说 App 里「点队友头像看战绩」用的就是这份 scene —— 我们只是把它存下来复用。
+ *
+ * 为什么不能查陌生人：scene 只有「本人登录态」和「同场十人」两个分发途径，
+ * 掌瓦没有按昵称搜人的接口（实测 `/go/customize_search/search` 服务端表都不存在），
+ * `user_profile/query/user` 也只认社区 uuid、拿不到别人的 scene。
+ *
+ * 隐私：对方在掌瓦里开了「战绩列表隐私 · 仅自己可见」，查询会拿到
+ * result=3001，我们原样转成一句人话，不做任何绕过。
+ */
+const PEERS_PATH = process.env.MATE_PEERS || path.join(path.dirname(CONFIG_PATH), 'peers.json')
+const PEER_SCAN_MAX = Number(process.env.PEER_SCAN_MAX) || 20
+
+function loadPeers () {
+  try {
+    return JSON.parse(fs.readFileSync(PEERS_PATH, 'utf8'))
+  } catch {
+    return {}
+  }
+}
+
+function savePeers (peers) {
+  try {
+    const dir = path.dirname(PEERS_PATH)
+    fs.mkdirSync(dir, { recursive: true })
+    const tmp = `${PEERS_PATH}.tmp`
+    fs.writeFileSync(tmp, JSON.stringify(peers, null, 2), { mode: 0o600 })
+    fs.renameSync(tmp, PEERS_PATH)
+  } catch (error) {
+    console.error('[gateway] 同场索引写盘失败：', error.message)
+  }
+}
+
+/**
+ * 扫最近若干场，把同过场的九个人收进索引。
+ *
+ * 只在「索引里查不到这个人」时才扫，不是每次查询都扫 —— 一次扫描 = 20 次记分板请求。
+ */
+async function scanPeers (config, limit = PEER_SCAN_MAX) {
+  const rows = await callEndpoint('matches', { count: 10, page: 1 }, config) || []
+  const list = Array.isArray(rows) ? rows : rows?.list || rows?.battle_list || []
+  const peers = loadPeers()
+  const me = String(config.role?.uid || config.role?.roleId || '')
+  // role.uid 是社区 uuid（JA-…），记分板里给的是游戏 role_id，两套 id，
+  // 所以还要按名字再挡一次，否则会把自己也收进索引
+  const meName = normalizeName(config.role?.name || '')
+
+  for (const row of list.slice(0, Math.min(limit, list.length))) {
+    const battleId = row.battle_id || row.match_id
+    if (!battleId) continue
+    let board
+    try {
+      board = await callEndpoint('match', { battleId }, config)
+    } catch {
+      continue
+    }
+    const players = board?.scoreboard || []
+    for (const p of players) {
+      const roleId = String(p.role_id || '')
+      if (!roleId || roleId === me || !p.scene) continue
+      const nick = String(p.user_name || '').trim()
+      if (!nick) continue
+      if (meName && normalizeName(nick) === meName) continue
+      peers[roleId] = {
+        name: nick,
+        roleId,
+        scene: p.scene,
+        seenAt: Date.now(),
+        battleId,
+        hidden: peers[roleId]?.hidden || false
+      }
+    }
+  }
+  savePeers(peers)
+  return peers
+}
+
+function normalizeName (name) {
+  return String(name || '').replace(/[<>\s]/g, '').toLowerCase()
+}
+
+// 「这次查的是不是同场那个人」——getAccount 认出来后存这儿，getMatches 用它的 scene
+const peerCtx = new Map()
+const peerKey = user => String(user || '__base')
+
+/** 按昵称找同过场的人：先查索引，查不到再扫一遍 */
+async function findPeer (name, config) {
+  const key = normalizeName(name)
+  if (!key) return null
+  const hit = v => normalizeName(v?.name) === key || normalizeName(v?.name).includes(key)
+  let peers = loadPeers()
+  let peer = Object.values(peers).find(hit)
+  if (peer) return peer
+
+  peers = await scanPeers(config)
+  peer = Object.values(peers).find(hit)
+  return peer || null
+}
+
+/** 关掉自己在同场索引里的可见性（对方发 `#瓦隐藏战绩` 时调用） */
+export function hidePeer (user, target) {
+  const peers = loadPeers()
+  const config = readConfig(user)
+  const me = String(config.role?.uid || config.role?.roleId || '')
+  const key = normalizeName(target)
+  let n = 0
+  for (const peer of Object.values(peers)) {
+    if (peer.roleId === me || (key && normalizeName(peer.name) === key)) {
+      peer.hidden = true
+      n += 1
+    }
+  }
+  if (n) savePeers(peers)
+  return n
+}
+
 export const mateappProvider = {
   name: 'mateapp',
 
   // 给网关的后台保温用：见 server.mjs 的 startKeepAlive()
   touchCredential,
+
+  hidePeer,
+
+  /** 同过场的人有几个（`#瓦同场` 用） */
+  async getPeers ({ user } = {}) {
+    const peers = Object.values(loadPeers()).filter(p => !p.hidden)
+    return peers.sort((a, b) => b.seenAt - a.seenAt).map(p => ({
+      name: p.name,
+      roleId: p.roleId,
+      seenAt: p.seenAt
+    }))
+  },
 
   /**
    * 掌瓦不提供「按名字找人」，只认已登录角色的 uid。
@@ -621,12 +755,29 @@ export const mateappProvider = {
     // 所以 A 查 B 会得到「你只能查自己」，而不是看到 A 的数据冒充 B。
     const allowMismatch = config.strictRole === false
     if (name && role.name && name !== role.name && !allowMismatch) {
+      // 唯一的例外：跟他同过一场的话，掌瓦会把他的 scene 发给同场十人，
+      // 那份 scene 就是「查他」的钥匙。陌生人一律查不了，见 scanPeers() 的注释。
+      const peer = await findPeer(name, config)
+      if (peer && !peer.hidden) {
+        peerCtx.set(peerKey(user), peer)
+        return {
+          puuid: peer.roleId,
+          id: peer.name,
+          name: peer.name,
+          tag: '',
+          region: role.zone || 'cn',
+          accountLevel: 0,
+          title: '同过场的玩家',
+          card: { small: '', large: '', wide: '' }
+        }
+      }
       throw upstreamError(
-        `这个数据源只服务当前登录的那个角色（${role.name}），查不了「${name}」。`
-        + '想看别人的数据，得让对方自己发 #瓦登录 导入他自己的登录态。',
+        `查不了「${name}」：掌瓦没有按昵称搜人的接口，只认登录态。`
+        + (peer?.hidden ? '（他自己关掉了这里的可见性）' : '能查的只有你自己，以及跟你同过一场的人 —— 陌生人没法查。'),
         'NOT_SUPPORTED'
       )
     }
+    peerCtx.delete(peerKey(user))
 
     const display = role.name || role.uid
     return {
@@ -648,6 +799,21 @@ export const mateappProvider = {
    */
   async getProfile ({ account, user }) {
     const config = readConfig(user)
+
+    // 面板只认自己的登录态。
+    // 试过把同场那个人的 scene 传给 seasonoverview，掌瓦回 result=1002「请求失败」——
+    // 这套聚合接口不认别人的 scene（只有 record/list、record/scoreboard 认）。
+    // 所以这里直接说清楚，别让上游的 1002 糊到用户脸上，更不能拿自己的数据顶上去。
+    const asked = String(account || '')
+    const ownName = normalizeName(config.role?.name || '')
+    const ownUid = String(config.role?.uid || config.role?.roleId || '')
+    if (asked && normalizeName(asked) !== ownName && asked !== ownUid) {
+      throw upstreamError(
+        `面板查不了「${asked}」：掌瓦的赛季总览只认自己的登录态。`
+        + '看别人的近期战绩用 #瓦战绩 <昵称>。',
+        'NOT_SUPPORTED'
+      )
+    }
 
     const overview = await callEndpoint('profile', {}, config)
     rememberSeason(overview, user)
@@ -674,20 +840,46 @@ export const mateappProvider = {
   async getMatches ({ account, count, user }) {
     const want = Math.min(Math.max(Number(count) || 10, 1), 50)
     const config = readConfig(user)
+    const asked = String(account || '')
+    const ownName = normalizeName(config.role?.name || '')
+    const ownUid = String(config.role?.uid || config.role?.roleId || '')
+    const isSelf = !asked || normalizeName(asked) === ownName || asked === ownUid
 
-    const first = await callEndpoint('matches', { baton: '' }, config)
+    // 查的是同过场的那个人 → 全程换成他的 scene。
+    // 这里不信任「只靠 getAccount 先认一次」：万一有人直接打 /v1/matches，
+    // 那会拿自己的战绩顶着别人的名字返回 —— 所以查不到人就报错，绝不静默降级。
+    let peer = peerCtx.get(peerKey(user))
+    if (!isSelf && (!peer || normalizeName(peer.name) !== normalizeName(asked))) {
+      peer = await findPeer(asked, config)
+      if (peer && peer.hidden) {
+        throw upstreamError('他自己关掉了这里的可见性（#瓦隐藏战绩），查不了', 'NOT_SUPPORTED')
+      }
+      if (!peer) {
+        throw upstreamError(
+          `查不了「${asked}」：掌瓦没有按昵称搜人的接口，能查的只有你自己，`
+          + '以及跟你同过一场的人。',
+          'NOT_SUPPORTED'
+        )
+      }
+      peerCtx.set(peerKey(user), peer)
+    }
+    if (isSelf) peerCtx.delete(peerKey(user))
+    const scene = peer ? { scene: peer.scene } : {}
+
+    const first = await callEndpoint('matches', { ...scene, baton: '' }, config)
     const rows = [...(first?.battle_list || [])]
     let baton = first?.next_baton || ''
     let guard = 0
 
     while (rows.length < want && baton && guard < MAX_PAGES) {
       guard += 1
-      const next = await callEndpoint('matches', { baton }, config)
+      const next = await callEndpoint('matches', { ...scene, baton }, config)
       const more = next?.battle_list || []
       if (!more.length) break
       rows.push(...more)
       baton = next?.next_baton || ''
     }
+    if (peer) return MAPPING.matches({ ...first, battle_list: rows.slice(0, want) }, ctxOf(account, user))
 
     rememberBattles(rows, user)
 
@@ -713,17 +905,32 @@ export const mateappProvider = {
 
     const config = readConfig(user)
 
+    // 看的是同场那个人的对局 → 记分板、回合事件也得用**他的** scene 去开，
+    // 拿自己的 scene 查别人的 battle_id，掌瓦直接回 result=1006「请求失败」。
+    const asked = String(account || '')
+    const ownName = normalizeName(config.role?.name || '')
+    const ownUid = String(config.role?.uid || config.role?.roleId || '')
+    const isSelf = !asked || normalizeName(asked) === ownName || asked === ownUid
+    let sceneVars = {}
+    if (!isSelf) {
+      const peer = await findPeer(asked, config)
+      if (peer && !peer.hidden) sceneVars = { scene: peer.scene }
+    }
+
     let meta = battleMetaOf(id, user)
     if (!meta) {
-      // 没在本进程里列过这局：翻一页列表碰运气（列表就是最近 10 场）
-      const first = await callEndpoint('matches', { baton: '' }, config).catch(() => null)
-      rememberBattles(first?.battle_list || [], user)
+      // 没在本进程里列过这局：翻一页列表碰运气（列表就是最近 10 场）。
+      // 别人的对局要用他的 scene 翻，否则永远是空
+      const first = await callEndpoint('matches', { ...sceneVars, baton: '' }, config).catch(() => null)
+      if (isSelf) rememberBattles(first?.battle_list || [], user)
       meta = battleMetaOf(id, user)
+        || (first?.battle_list || []).find(r => String(r.battle_id || r.match_id) === id)
     }
 
     const queueId = String(meta?.game_mode_id || '')
     const gameMode = String(meta?.game_submode_id || '')
     const extra = {
+      ...sceneVars,
       battleId: id,
       queueId: queueId || config.defaults?.queueId || '255',
       gameMode: gameMode || config.defaults?.gameMode || '101001'
@@ -858,11 +1065,13 @@ export const mateappProvider = {
 function ctxOf (account, user) {
   const config = readConfig(user)
   const role = config.role || {}
+  // 查同过场的人时，显示的是他的名字，不是本账号的
+  const peer = peerCtx.get(peerKey(user))
   return {
     account: account || role.uid || '',
-    role,
-    name: role.name || '',
-    tag: role.tag || '',
+    role: peer ? { ...role, name: peer.name, uid: peer.roleId } : role,
+    name: peer ? peer.name : role.name || '',
+    tag: '',
     zone: role.zone || 'cn'
   }
 }

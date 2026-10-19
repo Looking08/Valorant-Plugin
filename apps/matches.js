@@ -10,8 +10,9 @@ import {
   getMatch,
   agentOf,
   mapOf,
-  resolveAccount,
+  resolveTarget,
   NeedBind,
+  UnknownPeer,
   asset,
   assets,
   GatewayError,
@@ -31,8 +32,10 @@ import {
 /** userId → { list, expire }：每人一份，互不干扰 */
 const lastResults = new Map()
 
-function setLast (userId, list) {
-  lastResults.set(String(userId), { list, expire: Date.now() + 30 * 60 * 1000 })
+// 除了列表，还要记住「这份列表是谁的」：
+// 查同场那个人的战绩时，详情也要用他的 scene 去开，拿自己的会直接报 1006
+function setLast (userId, list, accountId = '') {
+  lastResults.set(String(userId), { list, accountId, expire: Date.now() + 30 * 60 * 1000 })
 }
 
 function getLast (userId) {
@@ -42,7 +45,7 @@ function getLast (userId) {
     lastResults.delete(String(userId))
     return null
   }
-  return hit.list
+  return hit
 }
 
 /** 把网关返回的原始战绩 enrich 成模板能直接用的一组数据 */
@@ -117,9 +120,11 @@ export class ValorantMatches extends plugin {
 
     let account
     try {
-      account = resolveAccount(e, raw).account
+      // 走 resolveTarget：带昵称就按昵称查同过场的人（`#瓦战绩 鱼香肉丝`），
+      // 没带就还是查自己。查不到昵称会抛 UnknownPeer，绝不静默退回自己的账号
+      account = (await resolveTarget(e, raw)).account
     } catch (error) {
-      if (error instanceof NeedBind) await e.reply(error.message)
+      if (error instanceof NeedBind || error instanceof UnknownPeer) await e.reply(error.message)
       else throw error
       return true
     }
@@ -153,7 +158,7 @@ export class ValorantMatches extends plugin {
     }
 
     const list = await buildList(rawList)
-    setLast(e.user_id, rawList)
+    setLast(e.user_id, rawList, account.id)
 
     const acc = data.account || {}
     const summary = data.summary || {}
@@ -188,15 +193,17 @@ export class ValorantMatches extends plugin {
       await e.reply('先发一次 #瓦战绩 拿到列表，再对序号查详情哦。')
       return true
     }
-    if (index < 0 || index >= cache.length) {
-      await e.reply(`序号要在 1 ~ ${cache.length} 之间。`)
+    if (index < 0 || index >= cache.list.length) {
+      await e.reply(`序号要在 1 ~ ${cache.list.length} 之间。`)
       return true
     }
 
-    const brief = cache[index]
+    const brief = cache.list[index]
     let data
     try {
-      data = await getMatch(brief.matchId, brief.accountId || '', e.user_id)
+      // 传「这份列表是谁的」而不是列表行里的 id：查别人的战绩时，
+      // 网关要靠这个昵称找到他的 scene 才打得开记分板
+      data = await getMatch(brief.matchId, cache.accountId || brief.accountId || '', e.user_id)
     } catch (error) {
       if (error instanceof GatewayError) await e.reply(error.message)
       else {

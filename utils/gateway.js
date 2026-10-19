@@ -250,6 +250,26 @@ export async function removeCredential (user) {
   return json.data
 }
 
+/* ---------------- 同过场的玩家 ---------------- */
+
+/**
+ * 同过场的人（掌瓦把每人的 scene 发给同场十人，那份 scene 就是「查他」的钥匙）。
+ * 陌生人查不到 —— 掌瓦没有按昵称搜人的接口。
+ */
+export async function listPeers (user = '') {
+  const json = await request('/v1/peers', { user }, { allowEmpty: true })
+  return json.data || []
+}
+
+/** 关掉自己在同场索引里的可见性（可退出） */
+export async function hidePeer (user, name = '') {
+  const json = await request('/v1/peers', { user }, {
+    method: 'POST',
+    body: { user, action: 'hide', name }
+  })
+  return json.data
+}
+
 /* ---------------- 扫码登录 ---------------- */
 
 /**

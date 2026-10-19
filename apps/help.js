@@ -51,6 +51,16 @@ const SECTIONS = [
   },
   {
     icon: '05',
+    title: '同过场的人',
+    desc: '掌瓦把每人的 scene 发给同场十人，所以打过就能查',
+    items: [
+      { cmd: '#瓦战绩', args: '<昵称>', desc: '查同过场那位的战绩。陌生人查不了 —— 掌瓦没有按昵称搜人的接口' },
+      { cmd: '#瓦同场', args: '', desc: '看已经收录了谁' },
+      { cmd: '#瓦隐藏战绩', args: '', desc: '关掉自己在索引里的可见性（对方开了隐私也会查不到）' }
+    ]
+  },
+  {
+    icon: '07',
     title: '枪械熟练度',
     desc: '你到底被哪把枪杀得最多',
     items: [
@@ -59,7 +69,7 @@ const SECTIONS = [
     ]
   },
   {
-    icon: '06',
+    icon: '08',
     title: '系统',
     desc: '排查与维护',
     items: [

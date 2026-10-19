@@ -193,6 +193,35 @@ const routes = {
     ok(res, value, { cached: false })
   },
 
+  /**
+   * 同过场的人。
+   *
+   * GET  /v1/peers            已收录谁（昵称 + 最近一次同场时间）
+   * POST /v1/peers {action:'hide'}         把自己从索引里关掉（可退出）
+   * POST /v1/peers {action:'hide', name:x} 指定昵称（主人用）
+   */
+  '/v1/peers': async (req, res, params, user) => {
+    if (typeof provider.getPeers !== 'function') {
+      throw Object.assign(new Error(`数据源 ${provider.name} 不支持查同场玩家`), { code: 'NOT_SUPPORTED' })
+    }
+
+    if ((req.method || 'GET').toUpperCase() === 'GET') {
+      ok(res, await provider.getPeers({ user }), { cached: false })
+      return
+    }
+
+    const body = readJsonBody(await readBody(req))
+    const action = String(body?.action || '')
+    if (action !== 'hide') {
+      throw Object.assign(new Error('只支持 action=hide'), { code: 'BAD_REQUEST' })
+    }
+    if (typeof provider.hidePeer !== 'function') {
+      throw Object.assign(new Error(`数据源 ${provider.name} 不支持隐藏`), { code: 'NOT_SUPPORTED' })
+    }
+    const n = provider.hidePeer(user, body?.name || '')
+    ok(res, { hidden: n }, { cached: false })
+  },
+
   /* ---------------- 凭证（一人一份登录态） ---------------- */
 
   /**
