@@ -169,11 +169,170 @@ function upstreamError (message, code = 'UPSTREAM') {
   return error
 }
 
-function headersOf (config) {
+/**
+ * 服务端有时候会把错误响应体**连着拼两遍**（`{...}{...`），JSON.parse 直接挂。
+ * 这里先老实 parse，失败就退到「取第一个平衡的 JSON 对象」。
+ */
+function parseLoose (text) {
+  try {
+    return JSON.parse(text)
+  } catch {}
+  let depth = 0
+  let quote = ''
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i]
+    if (quote) {
+      if (ch === '\\') { i += 1; continue }
+      if (ch === quote) quote = ''
+      continue
+    }
+    if (ch === '"') { quote = '"'; continue }
+    if (ch === '{') depth += 1
+    else if (ch === '}' && depth > 0) {
+      depth -= 1
+      if (depth === 0) {
+        try { return JSON.parse(text.slice(0, i + 1)) } catch { return null }
+      }
+    }
+  }
+  return null
+}
+
+/** 把 cookie 里某个字段换成新值，其余原样保留 */
+function patchCookie (cookie, key, value) {
+  return String(cookie).split(';')
+    .map(part => {
+      const name = part.trim().split('=')[0]
+      return name === key ? `${key}=${value.trim()}` : part.trim()
+    })
+    .filter(Boolean)
+    .join('; ')
+}
+
+/**
+ * 从 cookie 里反推「我是谁」。
+ *
+ * `refresh_third_token` 只要 `type + uuid + openid` 三个值，而这三个值
+ * 全都能从登录态自己的 cookie 里读出来 —— 不需要额外让用户再抓一遍。
+ */
+function loginIdentity (cookie) {
+  const appid = cookieValue(cookie, 'appid') || ''
+  const acctype = cookieValue(cookie, 'acctype') || ''
+  const openid = cookieValue(cookie, 'openid') || ''
+  const uuid = cookieValue(cookie, 'userId') || cookieValue(cookie, 'uuid') || ''
+  // appid=wxcbb49f1f... 是微信；抓包里同时看到 accountType=2 对应微信，留着兜底
+  const type = appid.startsWith('wx') ? 'wx' : acctype === '2' ? 'wx' : 'qq'
+  return { type, openid, uuid, ready: Boolean(openid && uuid) }
+}
+
+/**
+ * 用现有登录态换一个新的第三方 access_token。
+ *
+ * 实测结论（2026-10 在本机拿真实登录态打过）：
+ * `/go/auth/refresh_third_token` 光凭 `type + uuid + openid` 就肯签发新 token，
+ * **不需要 ct，也不需要 App 端的任何签名** —— 签名只在 App 内部那一步需要，
+ * 这一步服务端认的是 cookie 里还在有效期内的登录票据。
+ * 换出来的新 token 配上原来的 scene 一样查得动数据，等于给登录态续命。
+ *
+ * 票据彻底过期后它会返回 result 非 0 + 「登录态失效，请重新登录」，
+ * 那时候才是真的要重新抓包。拿不到新 token 就返回 null，调用方保持原样。
+ */
+export async function refreshAccessToken (config) {
+  const cookie = config.login?.cookie
+  const id = loginIdentity(cookie)
+  if (!cookie || !id.ready) return null
+
+  const url = new URL('/go/auth/refresh_third_token', config.baseUrl)
+  url.searchParams.set('source_game_zone', 'codev')
+  url.searchParams.set('game_zone', 'codev')
+
+  let res
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json; charset=utf-8',
+        Cookie: cookie
+      },
+      body: JSON.stringify({
+        type: id.type,
+        uuid: id.uuid,
+        openid: id.openid,
+        source_game_zone: 'codev',
+        game_zone: 'codev'
+      }),
+      signal: AbortSignal.timeout(TIMEOUT)
+    })
+  } catch {
+    return null
+  }
+
+  const json = parseLoose(await res.text().catch(() => ''))
+  const token = json?.data?.access_token
+  if (!token) return null
+  return patchCookie(cookie, 'access_token', token)
+}
+
+/**
+ * 给某个用户（不传则给 mate.json 那份）的登录态续一次 token。
+ *
+ * 网关的后台保温任务用这个：懒加载式续期只在「有人查」的时候生效，
+ * 安静待两周还是会凉。这里可以直接按账号调用。
+ */
+export async function touchCredential (user) {
+  try {
+    const cfg = readConfig(user)
+    if (!cfg?.login?.cookie || cfg.login?.refreshToken === false) return false
+    const next = await refreshAccessToken(cfg)
+    if (!next) return false
+    tokenState.set(cfg.__user || '__base', { cookie: next, at: Date.now() })
+    return true
+  } catch {
+    return false
+  }
+}
+
+// token 官方给 3600 秒，这里留一半余量就去续
+const TOKEN_TTL = 30 * 60 * 1000
+const tokenState = new Map()
+const tokenFlights = new Map()
+
+/**
+ * 拿一个「尽量新鲜」的 cookie 去发请求。
+ *
+ * 任何一步出问题都原样退回到原来那份 cookie —— 宁可续不上，
+ * 也绝不把现在还能用的登录态改坏。
+ */
+async function freshCookie (config) {
+  const key = config.__user || '__base'
+  const cookie = config.login?.cookie
+  if (!cookie || config.login?.refreshToken === false) return cookie
+
+  const cached = tokenState.get(key)
+  if (cached && Date.now() - cached.at < TOKEN_TTL) return cached.cookie
+
+  let flight = tokenFlights.get(key)
+  if (!flight) {
+    flight = refreshAccessToken(config).catch(() => null)
+    tokenFlights.set(key, flight)
+  }
+  let next = null
+  try {
+    next = await flight
+  } finally {
+    tokenFlights.delete(key)
+  }
+  if (next) tokenState.set(key, { cookie: next, at: Date.now() })
+  return next || tokenState.get(key)?.cookie || cookie
+}
+
+function headersOf (config, cookie) {
   const login = config.login || {}
   const headers = { Accept: 'application/json', ...(login.headers || {}) }
   // 允许只写一行 cookie，比手写 headers 对象省事（也少一个漏引号的机会）
-  if (login.cookie && !headers.Cookie && !headers.cookie) headers.Cookie = login.cookie
+  const value = cookie ?? login.cookie
+  if (value && !headers.Cookie && !headers.cookie) headers.Cookie = value
   return headers
 }
 
@@ -200,7 +359,8 @@ export async function callEndpoint (name, extra = {}, preset = null) {
     throw upstreamError('mate.json 里没配 baseUrl', 'NOT_CONFIGURED')
   }
 
-  const headers = headersOf(config)
+  // 每次真正发请求前先看能不能把 access_token 续一下（拿不到就用原样那份）
+  const headers = headersOf(config, await freshCookie(config))
   if (!Object.keys(headers).some(k => /^(cookie|authorization|x-token|access_token)$/i.test(k))) {
     throw upstreamError(
       'mate.json 里没配 login.cookie（或 login.headers）。掌瓦的接口靠 cookie 认人，'
@@ -441,6 +601,9 @@ async function attachRanks (list, rows, config) {
 
 export const mateappProvider = {
   name: 'mateapp',
+
+  // 给网关的后台保温用：见 server.mjs 的 startKeepAlive()
+  touchCredential,
 
   /**
    * 掌瓦不提供「按名字找人」，只认已登录角色的 uid。

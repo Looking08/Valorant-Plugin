@@ -325,6 +325,47 @@ const server = http.createServer(async (req, res) => {
   }
 })
 
+/**
+ * 登录态保温。
+ *
+ * 为什么要这个：掌瓦那份凭证里的 access_token 有效期只有 3600 秒，
+ * 而 `/go/auth/refresh_third_token` 只用 `type + uuid + openid`
+ * 就能换到新的（不需要 App 签名）—— 只要在票据彻底过期前一直续，
+ * 就不用再让人重新抓包。
+ *
+ * 懒加载式续期（发请求时才续）不够：安静挂两周照样凉。
+ * 这里给它按 25 分钟一次主动续。KEEP_ALIVE=0 可以关掉。
+ */
+function startKeepAlive () {
+  if (process.env.KEEP_ALIVE === '0') return
+  if (typeof provider.touchCredential !== 'function') return
+
+  const targets = () => {
+    const users = typeof provider.saveCredential === 'function' ? listAccounts() : []
+    return [''].concat(users.map(a => a.user))
+  }
+
+  const run = async () => {
+    let ok = 0
+    let bad = 0
+    for (const user of targets()) {
+      try {
+        if (await provider.touchCredential(user)) ok += 1
+        else bad += 1
+      } catch {
+        bad += 1
+      }
+      await new Promise(r => setTimeout(r, 800))
+    }
+    if (ok || bad) {
+      console.log(`[gateway] 登录态保温：续期成功 ${ok} 份${bad ? `，失败 ${bad} 份（票据可能已过期，需要重新抓包）` : ''}`)
+    }
+  }
+
+  run()
+  setInterval(run, 25 * 60 * 1000).unref?.()
+}
+
 server.listen(PORT, () => {
   console.log('------------------------------------------')
   console.log(`无畏契约战绩网关已启动`)
@@ -334,7 +375,12 @@ server.listen(PORT, () => {
     const count = listAccounts().length
     console.log(`  多账号：已开启（已导入 ${count} 份登录态）`)
   }
+  if (typeof provider.touchCredential === 'function' && process.env.KEEP_ALIVE !== '0') {
+    console.log('  登录态保温：已开启（每 25 分钟续一次 access_token，KEEP_ALIVE=0 关闭）')
+  }
   console.log(`  扫码适配器：${loginManager.list().join(' / ') || '无'}`)
   console.log(`  令牌：${TOKEN === 'change-me' ? 'change-me（请务必改成自己的）' : '已自定义'}`)
   console.log('------------------------------------------')
+
+  startKeepAlive()
 })
