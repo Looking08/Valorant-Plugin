@@ -1,16 +1,15 @@
 /**
- * 登录态导入（`#瓦登录` / `#瓦导入` / `#瓦退出登录` / `#瓦登录状态`）。
+ * 登录（`#瓦扫码登录` / `#瓦登录` / `#瓦导入` / `#瓦退出登录` / `#瓦登录状态`）。
  *
- * ## 为什么不是「扫码登录」
+ * ## 两条路，扫码是首选
  *
- * 掌瓦的登录态 = cookie（`access_token/openid/userId`）+ 请求体里的 `scene`，
- * 两者都是 QQ/微信 原生 SDK 授权后由腾讯下发给**掌瓦 App 自己**的，签名在 App 里。
- * 服务端复现不了这个流程，所以「扫码就能查」在掌瓦这条路上不成立
- * （实测过 QQ 扫码被 TLS 指纹风控、微信网页版拿到的是微信会话、调不了 mval）。
+ * 1. **扫码**（`#瓦扫码登录`）：机器人出一张 QQ 码，手机 QQ 扫一下确认，
+ *    网关拿 QQ 的 openid/access_token 去 `login_by_qq` 换掌瓦自己的凭证，
+ *    再问 `get_main_role_raw` 要角色名和 scene。全程不用抓包。
+ * 2. **导入**（`#瓦导入`）：抓包抄 cookie + scene。扫码走不通时的兜底
+ *    （比如服务器连不上 xui.ptlogin2.qq.com，或者 QQ 侧风控）。
  *
- * ## 那这里做什么
- *
- * 把「抓包 → 抄三个值 → 发给我」这条路铺平：一人导入一次，网关按 QQ 号分别存，
+ * 两条路最后都落成同一份东西：cookie + scene，按 QQ 号分开存，
  * 之后谁发指令就查谁自己的数据，互不相干。
  *
  * 导入格式（两种都认）：
@@ -29,8 +28,14 @@ import {
   credentialStatus,
   importCredential,
   removeCredential,
+  loginAdapters,
+  loginStart,
+  loginPoll,
+  loginCancel,
+  loginCommit,
   saveUserInfo,
   parseRiotId,
+  login as loginCfg,
   GatewayError
 } from '#utils'
 import { parsePayload } from '../utils/payload.js'
@@ -58,11 +63,11 @@ const EXPIRE_NOTE = '掌瓦的登录态会过期（一般几天到两周），�
 const PC_TIP = '有电脑的话可以省掉复制：在插件目录跑 node tools/har2cred.mjs 抓包.har --docker --user=你的QQ号 --token=网关令牌。'
 
 const TUTORIAL = [
-  '【为什么要导入】',
-  '掌瓦没有对外开放的扫码登录 —— 登录态是 App 内部签名的，服务端拿不到。',
-  '所以「登录」在这里 = 把你抓包得到的登录态交给我，每人一份，各查各的。',
+  '【最快的方式】',
+  '直接发 #瓦扫码登录，我给你一张二维码，用手机 QQ 扫一下确认就行。',
   '',
-  '【怎么抓】',
+  '【扫码不行就抓包】',
+  '扫码依赖 QQ 的登录页，服务器连不上或被风控时就只能导入。',
   ...STEPS,
   '',
   '【我认什么格式】',
@@ -91,7 +96,7 @@ export class ValorantLogin extends plugin {
         // 用户很可能直接把 cURL 粘过来、忘了带指令。只认「以 curl 开头且指向掌瓦」
         // 这一种，别把别的内容也吞进来（这条正则很容易写宽，宽了就是灾难）。
         { reg: "^\\s*curl\\s+['\"]?https://app\\.mval\\.qq\\.com", fnc: 'importCred' },
-        { reg: '^#?瓦扫码登录[\\s\\S]*$', fnc: 'scanExplain' },
+        { reg: '^#?瓦扫码登录[\\s\\S]*$', fnc: 'scanLogin' },
         { reg: '^#?瓦登录[\\s\\S]*$', fnc: 'status' }
       ]
     })
@@ -109,7 +114,13 @@ export class ValorantLogin extends plugin {
     }
 
     if (!info?.bound) {
-      await e.reply(['你还没有导入登录态，所以我查不到你的战绩。', '', TUTORIAL].join('\n'))
+      await e.reply([
+        '你还没有登录，所以我查不到你的战绩。',
+        '',
+        '发 #瓦扫码登录，用手机 QQ 扫一下就完事（不用抓包）。',
+        '',
+        ...(TUTORIAL.split('\n'))
+      ].join('\n'))
       return true
     }
 
@@ -239,25 +250,165 @@ export class ValorantLogin extends plugin {
     return true
   }
 
-  /* ---------------- 扫码（说明为什么没有） ---------------- */
+  /* ---------------- 扫码登录 ---------------- */
 
-  async scanExplain (e) {
+  /**
+   * 出码 → 轮询 → 落库。
+   *
+   * 轮询放在这条指令里同步跑完（最长 2 分钟），不引入「上下文」那套状态机：
+   * 群里同时有两个人扫码的场面很常见，靠 e.user_id 各跑各的反而更简单，
+   * 也不会出现「上一轮的码把这一轮的结果顶掉」。
+   */
+  async scanLogin (e) {
+    // 命名避开 `login`：这个类的方法叫 scanLogin，但 import 的 login() 同名会遮住
+    const cfg = loginCfg()
+    const ttl = cfg.pollSeconds
+    const every = cfg.pollInterval
+
+    let adapters = []
+    try {
+      adapters = await loginAdapters()
+    } catch (error) {
+      await e.reply(explain(error))
+      return true
+    }
+    if (!adapters.includes('qq')) {
+      await e.reply([
+        '网关没有挂载 QQ 扫码适配器，只能用导入的方式：',
+        '#瓦登录 看抓包步骤'
+      ].join('\n'))
+      return true
+    }
+
+    await e.reply('正在向 QQ 要二维码…').catch(() => {})
+
+    let session
+    try {
+      session = await loginStart(cfg.type, e.user_id)
+    } catch (error) {
+      await e.reply([
+        explain(error),
+        '',
+        '扫码走不通时可以退回抓包导入：发 #瓦登录 看步骤。'
+      ].join('\n'))
+      return true
+    }
+
+    const image = dataUrlToBuffer(session.qr)
+    const tip = [
+      '用手机 QQ 扫码，扫完在手机上点「确认登录」——只扫不点没用。',
+      ttl
+        ? `码两分钟左右失效，我这边替你盯 ${ttl} 秒；过期了就重发 #瓦扫码登录。`
+        : '码两分钟左右失效，过期了重发 #瓦扫码登录。'
+    ].join('\n')
+
+    // 跟 replyImage 一个路数：直接把 Buffer 丢给 e.reply。
+    // 不拼 segment 数组 —— 有的协议端对「图 + 文字」混排支持得不好，
+    // 二维码发不出去就整个流程卡死了，分开发稳一点。
+    if (image) {
+      await e.reply(image).catch(() => {})
+    }
+    await e.reply(tip)
+
+    // pollSeconds=0 表示不自动盯，用户自己发 #瓦登录状态 查
+    if (!ttl) {
+      await e.reply('二维码已经发出去了。扫完确认后用 #瓦登录状态 看结果。')
+      return true
+    }
+
+    // ---- 轮询 ----
+    const deadline = Date.now() + ttl * 1000
+    let said = 'waiting'
+    let last = null
+
+    while (Date.now() < deadline) {
+      await sleep(every * 1000)
+      try {
+        last = await loginPoll(session.sessionId)
+      } catch {
+        continue
+      }
+      if (!last) continue
+
+      if (last.status === 'scanned' && said !== 'scanned') {
+        said = 'scanned'
+        await e.reply('已扫码，等你在手机上点「确认登录」…').catch(() => {})
+        continue
+      }
+
+      if (last.status === 'confirmed') break
+
+      if (last.status === 'expired' || last.status === 'blocked' || last.status === 'cancelled') {
+        await loginCancel(session.sessionId).catch(() => {})
+        await e.reply([
+          last.message || '这次没扫成。',
+          '',
+          last.status === 'blocked'
+            ? 'QQ 那边没响应，通常是风控，重发一次 #瓦扫码登录 往往就好了。'
+            : '再来一次：发 #瓦扫码登录',
+          '老是失败的话改用抓包导入：发 #瓦登录 看步骤。'
+        ].join('\n'))
+        return true
+      }
+    }
+
+    if (last?.status !== 'confirmed') {
+      await loginCancel(session.sessionId).catch(() => {})
+      await e.reply('等太久了，这次先取消。想再试就发 #瓦扫码登录。')
+      return true
+    }
+
+    // ---- 落库 ----
+    let saved
+    try {
+      saved = await loginCommit(session.sessionId, e.user_id)
+    } catch (error) {
+      await e.reply(explain(error))
+      return true
+    }
+
+    if (saved?.saved === false) {
+      await e.reply([
+        '扫码成功了，但凭证没能存下来。',
+        saved.hint || '',
+        '',
+        '换成抓包导入一定能用：发 #瓦登录 看步骤。'
+      ].filter(Boolean).join('\n'))
+      return true
+    }
+
+    const role = saved?.role || {}
+    if (cfg.autoBind && role.name) bindOwnAccount(e.user_id, role.name, role.uid || '')
+
     await e.reply([
-      '掌瓦没法扫码登录，不是没做，是这条路不通：',
+      '✅ 扫码登录成功',
+      role.name ? `角色：${role.name}${role.tierText ? `（${role.tierText}）` : ''}` : '',
       '',
-      '· 登录态 = cookie（access_token/openid/userId）+ 请求体里的 scene，',
-      '  都是 QQ/微信 授权后由腾讯直接下发给掌瓦 App 的，签名在 App 里；',
-      '· 我们试过 QQ 扫码（被风控挡）、微信网页版（拿到的是微信会话，调不了掌瓦接口）；',
-      '· 微信开放平台「网站应用」换来的 openid 也对不上掌瓦的 appid。',
-      '',
-      '所以只能导入登录态，一人一份：',
-      '#瓦登录 看步骤'
-    ].join('\n'))
+      '现在直接发 #瓦面板 / #瓦战绩 就是查你自己的数据。',
+      '登录态会过期，失效了重新扫一次即可；换号先 #瓦退出登录。'
+    ].filter(Boolean).join('\n'))
     return true
   }
 }
 
 /* ---------------- 工具 ---------------- */
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+
+/**
+ * `data:image/png;base64,xxxx` → Buffer。
+ * 网关回的就是这个格式，直接用比让插件再拼一次路径省事。
+ */
+function dataUrlToBuffer (dataUrl) {
+  const m = String(dataUrl || '').match(/^data:image\/\w+;base64,(.+)$/)
+  if (!m) return null
+  try {
+    const buf = Buffer.from(m[1], 'base64')
+    return buf.length ? buf : null
+  } catch {
+    return null
+  }
+}
 
 // 解析器本体在 utils/payload.js —— 那边零框架依赖，单测才能脱离云崽跑
 export { parsePayload }

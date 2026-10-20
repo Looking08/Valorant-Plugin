@@ -1009,9 +1009,8 @@ export const mateappProvider = {
   /**
    * 导入一份登录态（多账号的入口）。
    *
-   * 掌瓦没有可复现的扫码流程（详见 mateapp.md「为什么不能扫码」），
-   * 所以「登录」在这里的语义就是「把你抓包得到的三样东西交给我」：
-   * `login.cookie` + `scene` + `sceneDetail`。
+   * 「登录」的语义就是「把三样东西交给我」：`login.cookie` + `scene` + `sceneDetail`。
+   * 两个入口都走这里：`#瓦导入` 粘贴抓包，以及扫码登录成功后的 saveLogin()。
    *
    * 收下之后立刻用它打一次真实请求做验证，顺便把角色名 / role_id 认出来 ——
    * 不验证就存，用户会在下一次查询时才发现凭证是坏的，排错成本高得多。
@@ -1095,17 +1094,40 @@ export const mateappProvider = {
   },
 
   /**
-   * 扫码登录对掌瓦无效，这里**实现出来只是为了把话说清楚**。
+   * 扫码登录成功后落库。
    *
-   * 返回 `saved: false` 会覆盖 session.commit 里的 `saved: true`，
-   * 所以插件不会误报「登录成功」—— 不然用户会以为下次就能查了。
+   * 适配器（`bridge/login/qq.js`）已经走完了
+   * QQ OAuth → `login_by_qq` → `get_main_role_raw`，交给这里的 `credential`
+   * 是可以**直接查战绩**的东西：cookie + scene + 角色。
+   * 剩下的和「手动导入」完全一样，所以直接复用 saveCredential 的验证逻辑。
    */
-  async saveLogin () {
-    return {
-      saved: false,
-      hint: '掌瓦没有可用的扫码登录通道（登录态由 App 内部签名，服务端复现不了）。'
-        + '请用 #瓦登录 导入抓到的登录态。'
+  async saveLogin ({ user, credential }) {
+    const key = String(user || '').trim()
+    if (!key) {
+      return {
+        saved: false,
+        hint: '扫码登录要知道是谁在扫才能分开存。检查一下网关的登录接口有没有带上 user。'
+      }
     }
+    if (!credential?.cookie) {
+      return { saved: false, hint: '扫码成功了，但适配器没换出掌瓦的 cookie，凭证没法用。' }
+    }
+    if (!credential.scene) {
+      return {
+        saved: false,
+        hint: '扫码登录拿到了 cookie，但没认出你的角色（拿不到 scene）。'
+          + '多半是这个 QQ 还没在掌瓦 App 里登录过无畏契约手游 —— 先进游戏开一局，再回来扫码。'
+      }
+    }
+
+    const saved = await this.saveCredential({
+      user: key,
+      cookie: credential.cookie,
+      scene: credential.scene,
+      sceneDetail: credential.sceneDetail
+    })
+
+    return { saved: true, user: key, role: saved?.role || credential.role || {} }
   }
 }
 

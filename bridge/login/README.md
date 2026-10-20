@@ -114,28 +114,34 @@ App 内点「微信/QQ 登录」
 
 ### QQ（`qq.js`）
 
-不需要任何配置，但有实测结论必须先说清楚：
+不需要任何配置，开箱能跑。**这不是调试工具，是主用登录方式。**
 
 ```
-第 1 步 xlogin   → 拿 pt_login_sig          ✅ 稳定
-第 2 步 ptqrshow → 拿到真二维码 PNG         ✅ 稳定
-第 3 步 ptqrlogin→ 轮询扫码结果              ⚠️ 经常 HTTP 200 + 空 body
+1  xlogin      → pt_login_sig / idt / jsver          ✅
+2  ptqrshow    → 264×264 二维码 PNG                  ✅
+3  ptqrlogin   → 轮询 ptuiCB：66/67/0/65             ✅
+4  check_sig   → 追跳转到 auth://tauth.qq.com/#…     ✅
+5  login_by_qq → 换掌瓦凭证 { user_id, wt, ct, ctt } ✅
+6  get_main_role_raw → 角色名 + scene                ✅
 ```
 
-第 3 步的空响应来自 TAPISIX 前置网关，特征是 `Server: TAPISIX`、body 长度 0。
-已试过并**无效**的手段：换 `ptredirect=0/1`、补全 `xlogin` 的 cookie jar、
-完整 Chrome UA + Referer、不同 TLS 客户端。判断是**按 TLS 指纹静默丢弃**。
+**之前「被风控」是我自己参数不对**，不是腾讯拦得死。第一版按**网页站点**来
+（`daid=383`、`pt_3rd_aid=0`、浏览器 UA），第 3 步稳定回 HTTP 200 + 空 body；
+换成**掌瓦 App 自己**那套就不一样了：
 
-两条可行替代路径（都需要你动一下手）：
+| 项 | 网页站（❌ 空响应） | 掌瓦 App（✅ 正常） |
+| --- | --- | --- |
+| `daid` | 383 | **381** |
+| `pt_3rd_aid` | 0 | **102061775** |
+| UA | Chrome | **mval/2.4.0…** |
+| 额外头 | — | **`X-Requested-With: com.tencent.apps.valorant`** |
+| 轮询 UA 后缀 | — | **`tencent_game_emulator`** |
 
-1. **浏览器方案** —— 用真实浏览器（playwright/puppeteer）打开
-   `https://xui.ptlogin2.qq.com/cgi-bin/xlogin?...` 让它在真 TLS 栈里跑，
-   再把 `ptqrlogin` 的响应拦下来喂回本服务；
-2. **粘贴真实请求头** —— 从浏览器 F12 里拷一份 `ptqrlogin` 请求的
-   Cookie / UA / Referer，填进 `qq.js` 顶部常量。
+另外 `ptqrshow` 的 `s` 参数别省：不传只有 **99×99**，手机扫不动；
+`s=8` 才是 264×264。
 
-所以本插件对 QQ 扫码的态度是：**能出码，但别指望它稳**。
-想要 100% 可用的绑定路径，仍然是 `#瓦绑定 名称#标签`。
+⚠️ 两个易失效点，官方换版本时要跟着改（都在 `qq.js` 顶部常量）：
+`sign` / `h5sig`（一次性签名）和 `MVAL_MCODE`（客户端指纹）。
 
 ### 微信（`wechat.js`）
 

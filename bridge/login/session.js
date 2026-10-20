@@ -51,7 +51,7 @@ export class LoginManager {
    * 开一个扫码会话
    * @param {string} type qq / wx / 其它已注册的 adapter
    */
-  async start (type) {
+  async start (type, user = '') {
     const adapter = this.adapters.get(String(type || 'qq').toLowerCase())
     if (!adapter) {
       const error = new Error(`不支持的扫码方式：${type}，可用：${[...this.adapters.keys()].join(' / ')}`)
@@ -62,6 +62,8 @@ export class LoginManager {
     const id = crypto.randomBytes(8).toString('hex')
     const session = {
       id,
+      // 谁在扫码 —— 落库时要按人分开存，不能都写进部署者那一份
+      user: String(user || ''),
       type: adapter.name,
       status: 'waiting',
       message: '请用手机扫码',
@@ -71,7 +73,8 @@ export class LoginManager {
       state: null,
       qr: '',
       profile: null,
-      cookies: null
+      cookies: null,
+      credential: null
     }
 
     // 先登记再出码：出码可能要 1~2s，期间用户问状态也要能查到
@@ -129,6 +132,8 @@ export class LoginManager {
     if (result.message) session.message = result.message
     if (result.cookies) session.cookies = result.cookies
     if (result.profile) session.profile = result.profile
+    // 适配器已经把它换成了「能直接查数据」的凭证（掌瓦这条路是 cookie + scene）
+    if (result.credential) session.credential = result.credential
 
     return this.view(session)
   }
@@ -149,8 +154,12 @@ export class LoginManager {
       }
     }
     const ret = await provider.saveLogin({
+      // ⚠️ user 必须带上：不带就会写进 mate.json 本体，
+      //    等于把扫码的人覆盖成部署者自己
+      user: session.user,
       type: session.type,
       cookies: session.cookies,
+      credential: session.credential,
       profile: session.profile
     })
     return { saved: true, ...(ret || {}) }

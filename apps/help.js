@@ -24,7 +24,8 @@ const SECTIONS = [
     title: '登录态',
     desc: '一人一份，各查各的',
     items: [
-      { cmd: '#瓦登录', args: '', desc: '看导入步骤与当前状态（掌瓦没有扫码登录）' },
+      { cmd: '#瓦扫码登录', args: '', desc: '机器人出码，手机 QQ 扫一下就好，不用抓包' },
+      { cmd: '#瓦登录', args: '', desc: '看登录状态；扫码走不通时会给出抓包步骤' },
       { cmd: '#瓦导入', args: '<粘贴 cURL>', desc: '抓包 App 里复制 cURL 直接粘上来，机器人自己拆 cookie 和 scene' },
       { cmd: '#瓦登录状态', args: '', desc: '看自己的登录态是否还有效' },
       { cmd: '#瓦退出登录', args: '', desc: '删掉自己的登录态（换号时用）' }

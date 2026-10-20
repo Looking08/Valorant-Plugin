@@ -328,17 +328,23 @@ Cookie / scene 一般几天到几十天。过期的表现：探针报 `UPSTREAM_
 
 | 尝试 | 结果 |
 | --- | --- |
-| QQ 扫码（`ptqrlogin`） | 出码成功；轮询接口返回 **HTTP 200 + 空 body**，判定 TLS 指纹风控，连续 5 次后放弃 |
+| QQ 扫码（网页站参数） | 出码成功；轮询 **HTTP 200 + 空 body** —— **是参数不对，不是风控**（见下） |
+| QQ 扫码（掌瓦 App 参数） | ✅ **通了**：`ptqrlogin` 正常回 `ptuiCB`，全链路可用 |
 | 微信网页版（`wxweb`） | 能真扫上、能拿到 `skey`/`pass_ticket`，但那是**微信会话**，调不了 `mval.qq.com` |
 | 微信开放平台（`wx`） | 需资质审核；换来的 openid 与掌瓦 appid 对不上 |
-| `/go/auth/refresh_client_ticket` | 能用 cookie 换到新的 `ct`（7 天），但换不出 `scene` |
 
-最后一行值得记一下：`ct` 是客户端票据，`scene` 是页面级会话 blob
-（实测同一个 HAR 里有 3 个不同的 scene：列表/概览一个、逐回合一个、红点一个）。
-所以「用 cookie 自动续 scene」这条路也堵着。
+**更正（2026-10-20）**：上面第一行原先被我记成「TLS 指纹风控」。实际是把
+ptlogin2 当成**网页站点**在用了（`daid=383`、`pt_3rd_aid=0`、Chrome UA）。
+换成**掌瓦 App 自己的参数**（`daid=381`、`pt_3rd_aid=102061775`、mval UA、
+`X-Requested-With: com.tencent.apps.valorant`）后轮询立刻正常。
 
-结论：`provider.saveLogin()` 特意写成直接返回 `{saved:false, hint}`，
-不实现一个假的成功 —— 免得有人以为下次就能查了。
+真正的钥匙是 `/go/auth/login_by_qq`：拿 QQ OAuth 的 `openid + access_token`
+去换掌瓦自己的 `{ user_id, wt, ct, ctt, sk }` —— **`ct` 不用自己算，是换给你的**。
+再调 `get_main_role_raw` 就拿到 `scene`，等于扫码直接拿到可查战绩的凭证。
+详见 `bridge/login/README.md` 和 `mateapp-scanlogin.md`。
+
+`provider.saveLogin()` 现在会把适配器给的 credential 交给 `saveCredential()`
+走同一套验证 + 落库，跟手动导入完全等价。
 
 ### 7.1 为什么「王者插件能扫码，瓦不能」
 

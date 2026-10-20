@@ -285,11 +285,16 @@ export async function loginAdapters () {
 
 /**
  * 开一个扫码会话
+ *
+ * `user` 必须带上：登录成功后凭证要落在扫码那个人名下，
+ * 不带就会被写进网关部署者自己那份配置里（串号）。
+ *
  * @param {string} type qq / wx / mock
+ * @param {string} user 发指令的 QQ 号
  * @returns {Promise<{sessionId: string, type: string, qr: string, expireIn: number}>}
  */
-export async function loginStart (type) {
-  const json = await request('/v1/login/start', { type })
+export async function loginStart (type, user = '') {
+  const json = await request('/v1/login/start', { type, user })
   return json.data
 }
 
@@ -308,8 +313,8 @@ export async function loginCancel (sessionId) {
   return json.data
 }
 
-/** 登录成功后把凭证交给网关落库 */
-export async function loginCommit (sessionId) {
-  const json = await request('/v1/login/commit', { session: sessionId }, { allowEmpty: true })
+/** 登录成功后把凭证交给网关落库（user 决定存到谁名下，见 loginStart） */
+export async function loginCommit (sessionId, user = '') {
+  const json = await request('/v1/login/commit', { session: sessionId, user }, { allowEmpty: true })
   return json.data
 }

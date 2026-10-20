@@ -275,7 +275,8 @@ const routes = {
 
   '/v1/login/start': async (req, res, params) => {
     const type = params.get('type') || 'qq'
-    const data = await loginManager.start(type)
+    // user 决定登录成功后凭证落在谁名下，别漏
+    const data = await loginManager.start(type, params.get('user') || '')
     ok(res, data, { cached: false })
   },
 

@@ -125,7 +125,10 @@ for (const msg of targets) {
     atme: false,
     isGroup: false,
     reply: async content => {
-      if (content?.type === 'image' && Buffer.isBuffer(content.file)) {
+      // 直接回 Buffer（replyImage、二维码都是这么发的）
+      if (Buffer.isBuffer(content)) {
+        saveImage(content)
+      } else if (content?.type === 'image' && Buffer.isBuffer(content.file)) {
         saveImage(content.file)
       } else if (content?.file && Buffer.isBuffer(content.file)) {
         saveImage(content.file)
