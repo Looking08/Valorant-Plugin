@@ -266,6 +266,26 @@ const routes = {
     }, { cached: false })
   },
 
+  /* ---------------- 真实绑定账号（不用靠昵称猜） ---------------- */
+
+  /**
+   * GET /v1/bound?user=xxx
+   *
+   * 掌瓦自己的账号列表。它认登录态不认昵称，所以返回的必然是这个号真能查的人，
+   * 每条带 `scene`（= selfUuid），插件拿它来绑定就不用猜了。
+   * demo 数据源没有这回事，如实报 NOT_SUPPORTED。
+   */
+  '/v1/bound': async (req, res, params, user) => {
+    if (typeof provider.getBoundAccounts !== 'function') {
+      throw Object.assign(
+        new Error(`数据源 ${provider.name} 不支持读真实绑定账号（只有掌瓦 mateapp 有）`),
+        { code: 'NOT_SUPPORTED' }
+      )
+    }
+    const list = await provider.getBoundAccounts({ user })
+    ok(res, { accounts: list }, { cached: false })
+  },
+
   /* ---------------- 扫码登录 ---------------- */
 
   // 用哪些适配器可用（插件据此提示「微信没配置」而不是让用户扫半天）

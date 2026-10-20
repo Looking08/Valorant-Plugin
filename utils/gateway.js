@@ -389,6 +389,23 @@ export async function credentialStatus (user) {
 }
 
 /**
+ * 这个登录态底下真实绑着的游戏账号。
+ *
+ * 掌瓦自己的 `/go/auth/bind_relation_list`：认登录态不认昵称，
+ * 所以返回的一定是真能查的人，每条还带着 scene（= selfUuid）。
+ * 绑不上的时候拿它兜底，比让用户猜昵称靠谱得多。
+ *
+ * 没配掌瓦数据源（demo）会抛 NOT_SUPPORTED，调用方要接着。
+ *
+ * @returns {Promise<Array<{index:number, name:string, scene:string, uin:string, thirdType:number, icon:string, verified:boolean}>>}
+ */
+export async function boundAccounts (user = '') {
+  // 短缓存：账号列表几乎不变，但刚导入完要能马上看到
+  const json = await cached(`bound:${user}`, 120, () => request('/v1/bound', { user }, { allowEmpty: true }))
+  return json.data?.accounts || []
+}
+
+/**
  * 导入登录态。
  *
  * 掌瓦没有可复现的扫码流程，所以这里的「登录」= 交一份抓包得到的

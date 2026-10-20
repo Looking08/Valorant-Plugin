@@ -50,3 +50,44 @@ body: { type: "wx", uuid: "<userId>", openid: "<openid>", source_game_zone, game
 没有 `/dev/binder` 也没有 binderfs，且 docker pull 走不通；
 Android Studio 只装了 platform-tools，emulator 与系统镜像都要现下 ~2GB，
 而机器是 2 核 8G、负载常年两位数，跑起来基本不能用。所以没往那边走了。
+
+---
+
+## 补充（2026-10-21 实测）：还有一条 `bind_relation_list`，能拿到真实账号
+
+逆向 2.9.0 APK 时把 `/go/auth/*` 的接口表扒出来了（14 条），其中这条最好用：
+
+```
+POST /go/auth/bind_relation_list?source_game_zone=codev&game_zone=codev
+body: { source_game_zone, game_zone }
+→ data.list[]: { uin, nickName, selfUuid, type, thirdType, iconUrl, isVerification }
+```
+
+**一个必须知道的坑：`nickName` 是第三方昵称，不是游戏名。**
+
+实测同一个号：列表里 `nickName` 是「看见」（`iconUrl` 是 `thirdwx.qlogo.cn` 微信头像），
+而登录态里 `role.name` 是「苦橘甘来」（游戏名），两边 `selfUuid` 完全一致。
+直接拿 `nickName` 去当账号名绑，绑出来是错的名字。
+
+所以代码里只在 `scene === role.uid` 时才把 `role.name` 作为 `gameName` 带上，
+`own: true` 标出「这是自己那份登录态」。
+
+### 用它解决了什么
+
+之前 `#瓦绑定` 全靠用户把名字打对 —— 掌瓦没有按昵称搜人的接口，
+打错（或游戏里改过名）就只回一句「没认出来这是什么账号格式」，很折磨人。现在：
+
+- `#瓦可选账号` 把真实能查的号列出来，`#瓦绑定 序号` 直接选，不用猜
+- `getAccount()` / `getProfile()` 认名字时多兜一层：昵称对得上、且是自己那条，就放行，
+  并按 `gameName` 回（不把微信昵称当账号名）
+- 认不出名字时，回复里直接带上这份列表
+
+### 同一批接口里其他几条的状态
+
+| 接口 | 状态 |
+| --- | --- |
+| `get_sdk_ticket` | ✅ 出 ticket |
+| `cancellogout` | ✅ |
+| `login_by_qq` / `login_by_wechat` | ✗ 要 `infotype` / `code`，四个入口（body/query/header/cookie）都塞不进去，是服务端签名中间件填的 |
+| `refresh_client_ticket` / `get_client_tmp_ticket` / `get_web_ticket` | ✗ 要 `ct`（448 字符那张），需 App 签名 |
+| `verification` | ✗ `ClientType 类型不支持` |

@@ -10,7 +10,8 @@ import {
   saveUserInfo,
   formatAccountList,
   parseRiotId,
-  searchAccount
+  searchAccount,
+  boundAccounts
 } from '#utils'
 
 const BIND_TUTORIAL = [
@@ -23,6 +24,36 @@ const BIND_TUTORIAL = [
   '· 国服掌瓦（手游）没有 #标签，直接写昵称就行：#瓦绑定 苦橘甘来'
 ].join('\n')
 
+/**
+ * 把掌瓦返回的真实账号列表排成可读的样子。
+ *
+ * 这份列表是掌瓦自己给的（`bind_relation_list`），认登录态不认昵称，
+ * 所以上面写的名字一定是当前真正生效的那个 —— 比让用户回忆自己叫啥靠谱。
+ */
+function formatBoundList (list) {
+  if (!list?.length) return '（这个登录态下没读到任何账号）'
+  return list.map(a => {
+    const src = a.thirdType === 2 ? '微信' : a.thirdType === 1 ? 'QQ' : ''
+    // gameName 是游戏里的名字，name 是微信/QQ 昵称 —— 两者常常不是一回事，
+    // 有游戏名就用它，昵称只作为补充说明，别拿昵称当账号名。
+    const label = a.gameName || a.name
+    const bits = []
+    if (a.gameName && a.name && a.gameName !== a.name) bits.push(`${src}昵称 ${a.name}`)
+    else if (src) bits.push(`${src}登录`)
+    if (!a.verified) bits.push('未实名')
+    return `${a.index}. ${label}${bits.length ? `（${bits.join(' · ')}）` : ''}`
+  }).join('\n')
+}
+
+/** 读真实账号列表；读不到就把原因带出来，别只说「没有」 */
+async function readBound (user) {
+  try {
+    return { list: await boundAccounts(user), why: '' }
+  } catch (error) {
+    return { list: [], why: error?.message || String(error) }
+  }
+}
+
 export class ValorantBind extends plugin {
   constructor () {
     super({
@@ -31,6 +62,7 @@ export class ValorantBind extends plugin {
       event: 'message',
       priority: 1000,
       rule: [
+        { reg: '^#?瓦(可选账号|号源|真实账号)$', fnc: 'bound' },
         { reg: '^#?瓦绑定[\\s\\S]*$', fnc: 'bind' },
         { reg: '^#?瓦切换\\s*\\d+$', fnc: 'switch' },
         { reg: '^#?瓦删(除|绑)\\s*\\d+$', fnc: 'remove' },
@@ -39,11 +71,93 @@ export class ValorantBind extends plugin {
     })
   }
 
+  /**
+   * 列出这个登录态下真实能查的账号。
+   *
+   * 掌瓦没有「按昵称搜人」的接口，之前绑定全靠用户把名字打对 —— 打错了
+   * （或者游戏里改过名）就只回一句「没认出来这是什么账号格式」，很折磨人。
+   * 这份列表是掌瓦自己给的，名字和 scene 都是当前生效的，照着选就行。
+   */
+  async bound (e) {
+    const { list, why } = await readBound(e.user_id)
+
+    if (why) {
+      await e.reply(`读不到真实账号列表：${why}\n\n${BIND_TUTORIAL}`)
+      return true
+    }
+    if (!list.length) {
+      await e.reply(`这个登录态下没读到绑定的游戏账号。\n\n${BIND_TUTORIAL}`)
+      return true
+    }
+
+    await e.reply([
+      '【这个登录态下真实能查的账号】',
+      formatBoundList(list),
+      '',
+      '直接用：#瓦绑定 序号（例：#瓦绑定 1）'
+    ].join('\n'))
+    return true
+  }
+
+  /** 从真实账号列表里按序号挑一个绑上 */
+  async bindByIndex (e, index) {
+    const { list, why } = await readBound(e.user_id)
+
+    if (why) {
+      await e.reply(`读不到真实账号列表：${why}`)
+      return true
+    }
+    if (!list.length) {
+      await e.reply(`这个登录态下没读到账号。\n\n${BIND_TUTORIAL}`)
+      return true
+    }
+
+    const picked = list.find(a => a.index === index)
+    if (!picked) {
+      await e.reply(`序号要在 1 ~ ${list.length} 之间哦：\n\n${formatBoundList(list)}`)
+      return true
+    }
+
+    // 游戏名优先：bind_relation_list 给的 name 是微信昵称，拿它当账号名会绑错
+    const label = picked.gameName || picked.name
+
+    const info = saveUserInfo(e.user_id, current => {
+      const accounts = Array.isArray(current.accounts) ? current.accounts : []
+      const exist = accounts.findIndex(a => a.id.toLowerCase() === label.toLowerCase())
+      // scene 存进 note：它是「查谁」的钥匙，后面排查问题时一眼能看见
+      const record = { id: label, name: label, tag: '', region: '', note: `scene ${picked.scene}` }
+
+      if (exist >= 0) {
+        accounts[exist] = { ...accounts[exist], ...record }
+        return { ...current, accounts, current: exist }
+      }
+      accounts.push(record)
+      return { ...current, accounts, current: accounts.length - 1 }
+    })
+
+    await e.reply([
+      `绑定成功：${label}`,
+      '（名字来自掌瓦的账号列表，不用猜）',
+      '',
+      formatAccountList(info)
+    ].join('\n'))
+    return true
+  }
+
   async bind (e) {
     const raw = e.msg.replace(/^#?瓦绑定/, '').trim()
 
     if (!raw) {
-      await e.reply(BIND_TUTORIAL)
+      const { list } = await readBound(e.user_id)
+      await e.reply(list.length
+        ? `${BIND_TUTORIAL}\n\n或者发 #瓦可选账号 看这个登录态下真实能查的号（这次读到了 ${list.length} 个）。`
+        : BIND_TUTORIAL)
+      return true
+    }
+
+    // 纯数字 = 从真实账号列表里挑第几个。这条比「猜昵称」稳得多。
+    if (/^\d+$/.test(raw)) {
+      await this.bindByIndex(e, Number(raw))
       return true
     }
 
@@ -85,11 +199,18 @@ export class ValorantBind extends plugin {
       }
 
       if (!target) {
+        // 认不出来的时候顺手把真实账号列表带出来。掌瓦没按昵称搜人的接口，
+        // 名字对不上就卡在这儿 —— 直接告诉他现在到底叫啥，比让他回忆强。
+        const { list } = await readBound(e.user_id)
+        const hint = list.length
+          ? `\n\n这个登录态下真实能查的是这些（发 #瓦绑定 序号 就能绑）：\n${formatBoundList(list)}`
+          : ''
+
         // 之前这里一律回「没认出来这是什么账号格式」，可网关没起来的提示一模一样，
         // 会让人以为自己名字写错了。分开说。
         await e.reply(why
-          ? `没能认出「${raw}」，但原因不是格式：\n${why}`
-          : `没认出来这是什么账号格式：${raw}\n\n${BIND_TUTORIAL}`)
+          ? `没能认出「${raw}」，但原因不是格式：\n${why}${hint}`
+          : `没认出来这是什么账号格式：${raw}\n\n${BIND_TUTORIAL}${hint}`)
         return true
       }
     }

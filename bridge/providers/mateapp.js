@@ -277,6 +277,92 @@ export async function refreshAccessToken (config) {
 }
 
 /**
+ * 读「这个登录态底下真实绑着的游戏账号」。
+ *
+ * 这是这次逆向最有价值的一条：`/go/auth/bind_relation_list` 是掌瓦自己的账号列表，
+ * 它**只认登录态、不认「名称#标签」** —— 所以返回的必然是这个号真能查的人，
+ * 不用靠昵称去猜（猜测那条路就是「没认出来这是什么账号格式」的来源）。
+ * 每条带 `selfUuid`，那正是查战绩要的 scene，等于把绑定一步钉死。
+ *
+ * 拿不到就直接抛错（没配 cookie / 登录态过期 / 上游拒绝），
+ * 由调用方决定要不要降级回「猜昵称」。
+ */
+export async function listBoundAccounts (config) {
+  const cfg = config || readConfig()
+  if (!cfg?.baseUrl) throw upstreamError('mate.json 里没配 baseUrl', 'NOT_CONFIGURED')
+
+  const headers = headersOf(cfg, await freshCookie(cfg))
+  if (!Object.keys(headers).some(k => /^(cookie|authorization|x-token|access_token)$/i.test(k))) {
+    throw upstreamError('mate.json 里没配 login.cookie，查不到绑定账号', 'NOT_CONFIGURED')
+  }
+
+  const url = new URL('/go/auth/bind_relation_list', cfg.baseUrl)
+  url.searchParams.set('source_game_zone', 'codev')
+  url.searchParams.set('game_zone', 'codev')
+
+  let res
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({ source_game_zone: 'codev', game_zone: 'codev' }),
+      signal: AbortSignal.timeout(TIMEOUT)
+    })
+  } catch (error) {
+    const reason = error.name === 'TimeoutError' || error.name === 'AbortError' ? '请求超时' : error.message
+    throw upstreamError(`连不上掌瓦接口（${reason}）`)
+  }
+
+  const json = parseLoose(await res.text().catch(() => ''))
+  if (String(json?.result) !== '0') {
+    throw upstreamError(
+      `掌瓦拒绝了这次查询：${json?.msg || json?.err_msg || json?.errMsg || '未知原因'}`,
+      res.status === 401 || res.status === 403 ? 'UPSTREAM_AUTH' : 'UPSTREAM'
+    )
+  }
+
+  const list = Array.isArray(json?.data?.list) ? json.data.list : []
+
+  /**
+   * 一个容易踩的坑：`bind_relation_list` 给的 `nickName` 是**第三方的昵称**
+   * （微信头像 `thirdwx.qlogo.cn`、QQ 头像同理），**不是游戏里的名字**。
+   * 实测同一个号：列表里叫「看见」（微信昵称），登录态里叫「苦橘甘来」（游戏名），
+   * `selfUuid` 两边一致 —— 拿昵称去当账号名绑，绑出来是错的名字。
+   *
+   * 所以只有 scene 对得上登录态自己 uid 的那条，才敢把 role.name 当成游戏名带上。
+   */
+  const ownUid = String(cfg.role?.uid || cfg.role?.roleId || '')
+  const ownName = String(cfg.role?.name || '')
+
+  return list
+    .map((it, i) => {
+      const scene = String(it.selfUuid || it.uuid || '').trim()
+      const isOwn = Boolean(ownUid && scene === ownUid)
+      return {
+        index: i + 1,
+        // 第三方昵称（微信 / QQ 的），不是游戏名
+        name: String(it.nickName || it.nickname || '').trim(),
+        // 游戏里的名字。只有自己那份登录态才知道，别人的是空的
+        gameName: isOwn ? ownName : '',
+        own: isOwn,
+        // selfUuid 就是查战绩要的 scene，不是普通的 uuid，别改字段名
+        scene,
+        uin: String(it.uin || it.openid || '').trim(),
+        // 掌瓦自己的枚举：1 = QQ，2 = 微信
+        thirdType: Number(it.thirdType ?? it.type ?? 0),
+        icon: String(it.iconUrl || '').trim(),
+        verified: Number(it.isVerification ?? 0) === 1
+      }
+    })
+    .filter(a => a.name || a.scene)
+}
+
+/** 按用户取（网关路由用这个；不传就是 mate.json 自己那份） */
+export async function getBoundAccounts ({ user } = {}) {
+  return listBoundAccounts(readConfig(user))
+}
+
+/**
  * 给某个用户（不传则给 mate.json 那份）的登录态续一次 token。
  *
  * 网关的后台保温任务用这个：懒加载式续期只在「有人查」的时候生效，
@@ -775,6 +861,9 @@ export const mateappProvider = {
 
   hidePeer,
 
+  // 掌瓦自己的账号列表（`#瓦可选账号` / 绑定时兜底用）
+  getBoundAccounts,
+
   /** 同过场的人有几个（`#瓦同场` 用） */
   async getPeers ({ user } = {}) {
     const peers = Object.values(loadPeers()).filter(p => !p.hidden)
@@ -795,6 +884,19 @@ export const mateappProvider = {
     if (!role.uid) {
       throw upstreamError('mate.json 里没配 role.uid，抓包里 cookie 的 userId / uuid 填进去', 'NOT_CONFIGURED')
     }
+
+    // 「自己」长什么样。国服掌瓦没有 #tag，硬拼一个 "名字#" 很难看，
+    // 也让人以为要带标签查，所以没 tag 就只用名字。
+    const asSelf = display => ({
+      puuid: role.uid,
+      id: role.tag ? `${display}#${role.tag}` : display,
+      name: display,
+      tag: role.tag || '',
+      region: role.zone || 'cn',
+      accountLevel: 0,
+      title: '掌瓦已登录角色',
+      card: { small: '', large: '', wide: '' }
+    })
 
     const name = String(query || '').split('#')[0].trim()
     // 多账号下「查别人」依然做不到 —— 但这里只在同一个人的登录态里比对，
@@ -817,6 +919,18 @@ export const mateappProvider = {
           card: { small: '', large: '', wide: '' }
         }
       }
+
+      // 名字对不上还有两种可能：游戏里改过名（role.name 是旧的），
+      // 或者用户填的是微信/QQ 昵称而不是游戏名。拿真实账号列表兜一次 ——
+      // 只要是「自己」那条（scene == role.uid），两个名字里对上哪个都放行。
+      const bound = await listBoundAccounts(config).catch(() => [])
+      const mine = bound.find(b => b.own && (b.gameName === name || b.name === name))
+      if (mine) {
+        peerCtx.delete(peerKey(user))
+        // 认出来的是自己，就按登录态里那个游戏名回，别把微信昵称当账号名
+        return asSelf(mine.gameName || role.name || role.uid)
+      }
+
       throw upstreamError(
         `查不了「${name}」：掌瓦没有按昵称搜人的接口，只认登录态。`
         + (peer?.hidden ? '（他自己关掉了这里的可见性）' : '能查的只有你自己，以及跟你同过一场的人 —— 陌生人没法查。'),
@@ -825,18 +939,7 @@ export const mateappProvider = {
     }
     peerCtx.delete(peerKey(user))
 
-    const display = role.name || role.uid
-    return {
-      puuid: role.uid,
-      // 国服掌瓦没有 #tag，硬拼一个 "名字#" 很难看，也让人以为要带标签查
-      id: role.tag ? `${display}#${role.tag}` : display,
-      name: display,
-      tag: role.tag || '',
-      region: role.zone || 'cn',
-      accountLevel: 0,
-      title: '掌瓦已登录角色',
-      card: { small: '', large: '', wide: '' }
-    }
+    return asSelf(role.name || role.uid)
   },
 
   /**
@@ -854,11 +957,18 @@ export const mateappProvider = {
     const ownName = normalizeName(config.role?.name || '')
     const ownUid = String(config.role?.uid || config.role?.roleId || '')
     if (asked && normalizeName(asked) !== ownName && asked !== ownUid) {
-      throw upstreamError(
-        `面板查不了「${asked}」：掌瓦的赛季总览只认自己的登录态。`
-        + '看别人的近期战绩用 #瓦战绩 <昵称>。',
-        'NOT_SUPPORTED'
+      // 同 getAccount()：改过名、或者填的是微信昵称的话，别把自己挡在外面。
+      const bound = await listBoundAccounts(config).catch(() => [])
+      const isSelfRenamed = bound.some(
+        b => b.own && (normalizeName(b.gameName) === normalizeName(asked) || normalizeName(b.name) === normalizeName(asked))
       )
+      if (!isSelfRenamed) {
+        throw upstreamError(
+          `面板查不了「${asked}」：掌瓦的赛季总览只认自己的登录态。`
+          + '看别人的近期战绩用 #瓦战绩 <昵称>。',
+          'NOT_SUPPORTED'
+        )
+      }
     }
 
     const overview = await callEndpoint('profile', {}, config)
