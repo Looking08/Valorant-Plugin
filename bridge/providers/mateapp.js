@@ -574,7 +574,15 @@ async function pool (tasks, limit = 4) {
  * 查不到（对局太老、模式不支持、上游抽风）就把 rank 留空 ——
  * 界面上不显示，绝不猜一个「大概第几」出来。
  */
-async function attachRanks (list, rows, config) {
+/**
+ * 补「本局全场第几」+ 列表页缺的那批字段。
+ *
+ * 记分板本来就是为了拿 rank 拉的，一次请求里其实同时带回来了
+ * 比分、时长、爆头率、伤害、首杀、下包拆包、残局 —— 早先只取了 rank
+ * 就把整块丢掉，于是列表页全显示「—」，还被写进 README 当成「掌瓦不给」。
+ * 现在同一次请求顺手填回去：**不增加任何额外请求**。
+ */
+async function attachRanks (list, rows, config, sceneVars = {}) {
   const setting = config.mvp || {}
   if (setting.lookup === false) return
 
@@ -584,18 +592,56 @@ async function attachRanks (list, rows, config) {
   const tasks = list.slice(0, limit).map((item, i) => async () => {
     const row = rows[i] || {}
     const board = await boardOf(config, item.matchId, {
+      ...sceneVars,
       queueId: String(row.game_mode_id || config.defaults?.queueId || '255'),
       gameMode: String(row.game_submode_id || config.defaults?.gameMode || '101001')
     })
-    const rank = num(board?.detail?.rank)
-    return rank > 0 ? rank : null
+    const detail = board?.detail || {}
+    const rank = num(detail.rank)
+    // 「我是哪一行」：is_me 就是「当前 scene 的主人」，查自己和查同场的人都对
+    const me = (board?.scoreboard || []).find(p => num(p.is_me) === 1) || null
+    return { rank: rank > 0 ? rank : null, me, detail }
   })
 
-  const ranks = await pool(tasks, concurrency)
-  ranks.forEach((rank, i) => {
-    if (i >= limit) return
-    list[i].rankInMatch = rank
-    list[i].mvp = rank === 1
+  const results = await pool(tasks, concurrency)
+  results.forEach((hit, i) => {
+    if (i >= limit || !hit) return
+    const item = list[i]
+    item.rankInMatch = hit.rank
+    item.mvp = hit.rank === 1
+
+    const d = hit.detail || {}
+    // 比分：列表行的 round_won/round_fail 恒为 0，只有记分板 detail 里是真的
+    const won = num(d.winning_games)
+    const lost = num(d.failed_games)
+    if (won || lost) {
+      item.score = `${won}-${lost}`
+      // 回合数掌瓦没单独给，胜+负就是这局打了多少回合
+      item.roundsPlayed = won + lost
+    }
+
+    // 时长：掌瓦给的是 "36m25s" 这种字符串
+    const secs = seconds(d.duration)
+    if (secs) item.durationSec = secs
+    if (num(d.game_start_time)) item.startedAt = num(d.game_start_time) * 1000
+    if (d.my_team) item.myTeam = String(d.my_team).toLowerCase()
+
+    const me = hit.me
+    if (!me) return
+    // ⚠️ damage 是「回合伤害」不是 ADR，但掌瓦就给这一个口径，标清楚就行
+    if (num(me.damage)) item.adr = num(me.damage)
+    if (rate(me.head_shots_rate)) item.headshotRate = rate(me.head_shots_rate)
+    if (num(me.first_kill_count)) item.firstBloods = num(me.first_kill_count)
+    if (num(me.plant_count)) item.plants = num(me.plant_count)
+    if (num(me.defuse_count)) item.defuses = num(me.defuse_count)
+    if (num(me.clutch)) item.clutch = num(me.clutch)
+    if (num(me.ace)) item.ace = num(me.ace)
+    // 列表行已经有 KDA，但记分板的更准（列表那行可能是别人的，查同场玩家时）
+    if (num(me.kill) || num(me.death)) {
+      item.kills = num(me.kill)
+      item.deaths = num(me.death)
+      item.assists = num(me.assist)
+    }
   })
 }
 
@@ -879,16 +925,17 @@ export const mateappProvider = {
       rows.push(...more)
       baton = next?.next_baton || ''
     }
-    if (peer) return MAPPING.matches({ ...first, battle_list: rows.slice(0, want) }, ctxOf(account, user))
-
-    rememberBattles(rows, user)
-
     const sliced = rows.slice(0, want)
     const mapped = MAPPING.matches({ ...first, battle_list: sliced }, ctxOf(account, user))
 
-    // 补「本局全场第几」。写在映射之后：映射只管字段，命名次是另一件事。
-    await attachRanks(mapped.list, sliced, config)
+    // 补「本局全场第几」和列表缺的那批字段。写在映射之后：映射只管字段，
+    // 名次和比分/时长/爆头率要从记分板现拿。查同场玩家时记分板也得用他的 scene，
+    // 拿自己的去开他的对局只会拿到 result=1006。
+    await attachRanks(mapped.list, sliced, config, scene)
 
+    if (peer) return mapped
+
+    rememberBattles(rows, user)
     return mapped
   },
 
@@ -1367,9 +1414,11 @@ const MAPPING = {
    *     game_mode_id("101"), game_submode_id("101001"), score_level.level
    *   }
    *
-   * ⚠️ 列表里**没有比分**（round_won/round_fail 实测恒为 "0"），只有详情页
-   *    `winning_games / failed_games` 才有。所以这里 score 给「—」，
-   *    点进详情才能看到 13-11。
+   * ⚠️ 列表行里的 `round_won` / `round_fail` 实测恒为 0，比分只能从记分板
+   *    detail 的 `winning_games / failed_games` 拿。同理时长、爆头率、伤害、
+   *    首杀、下包拆包、残局也只在记分板里 —— 这些一律由 attachRanks() 在同
+   *    一次记分板请求里回填（它本来就要拉记分板算全场名次，不额外发请求）。
+   *    这里先给占位值，拿不到就保持「—」。
    */
   matches (raw, ctx) {
     const rows = raw?.battle_list || []
@@ -1396,17 +1445,24 @@ const MAPPING = {
         assists,
         kd: num(r.kda_score),
         acs: num(r.score),
+        // 下面几条由 attachRanks() 从记分板回填，这里先占位
         adr: 0,
         headshotRate: 0,
         roundsPlayed: 0,
         durationSec: 0,
+        firstBloods: 0,
+        plants: 0,
+        defuses: 0,
+        clutch: 0,
+        ace: 0,
+        myTeam: '',
         // ts 是秒，插件侧按毫秒算，这里先乘好
         startedAt: num(r.ts) * 1000,
         accountId: ctx.account,
         // 下面两条是「上游给的」：D/A/SS 是掌瓦自己的评价等级，不是 MVP
         level: r.score_level?.level || '',
         tierChange: r.competitive_tier?.competitive_point_change || '',
-        // 下面两条由 attachRanks() 事后填：全场名次（1 = 全场最佳）
+        // 下面几条由 attachRanks() 事后填：全场名次（1 = 全场最佳）
         // 查不到就是 null，模板据此不显示，绝不猜
         rankInMatch: null,
         mvp: false
