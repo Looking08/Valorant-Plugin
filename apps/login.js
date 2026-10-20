@@ -282,6 +282,15 @@ export class ValorantLogin extends plugin {
 
     await e.reply('正在向 QQ 要二维码…').catch(() => {})
 
+    // 先把话说清楚再发码 —— 2026-10 实测：腾讯把掌瓦 appid 的 check_sig 前置机下线了，
+    // 扫完能确认，但最后换 token 那一步的域名是死的。发码之前提醒，总比让人扫完一脸问号好。
+    await e.reply([
+      '⚠️ 先说一句：扫码登录目前在腾讯侧走不通。',
+      '能出码、能扫、手机上也能确认，但最后一步「拿 token」的地址被腾讯下线了，到不了终点。',
+      '',
+      '想试就扫下面这张；想真能用，走导入：发 #瓦导入（抓包），一次能管很久。'
+    ].join('\n')).catch(() => {})
+
     let session
     try {
       session = await loginStart(cfg.type, e.user_id)

@@ -70,6 +70,8 @@ export class ValorantBind extends plugin {
       // 这种情况先让数据源认一下人 —— 认出来就用它返回的规范 id，
       // 认不出来再回教程（这样国际服用户漏了标签还能看到正确的格式提示）。
       const guess = raw.replace(/\b(ap|na|eu|kr|br|latam|cn)\b/i, '').trim()
+      /** 认号失败的真实原因（网关挂了 / 超时 / 上游报错），别和「格式不对」混为一谈 */
+      let why = ''
       try {
         const found = guess ? await searchAccount(guess, region, e.user_id) : null
         if (found?.id) {
@@ -77,12 +79,17 @@ export class ValorantBind extends plugin {
           verified = !!found.puuid
           guessed = true
         }
-      } catch {
+      } catch (error) {
         target = null
+        why = error?.message || String(error)
       }
 
       if (!target) {
-        await e.reply(`没认出来这是什么账号格式：${raw}\n\n${BIND_TUTORIAL}`)
+        // 之前这里一律回「没认出来这是什么账号格式」，可网关没起来的提示一模一样，
+        // 会让人以为自己名字写错了。分开说。
+        await e.reply(why
+          ? `没能认出「${raw}」，但原因不是格式：\n${why}`
+          : `没认出来这是什么账号格式：${raw}\n\n${BIND_TUTORIAL}`)
         return true
       }
     }

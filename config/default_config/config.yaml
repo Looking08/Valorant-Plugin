@@ -6,7 +6,8 @@
 
 # ---------------- 战绩网关 ----------------
 # 插件本身**不含**任何抓包得来的登录态或第三方 key —— 玩家数据全部由你自己
-# 部署的网关提供。起示例网关：在本插件目录执行 `pnpm bridge`。
+# 部署的网关提供。网关代码随插件一起下载（bridge/，零依赖，只要 node），
+# 但**不会自动运行**：要么让它自己拉（见下面的 autoStart），要么手动 `pnpm bridge`。
 gateway:
   # 网关地址，末尾不要带斜杠
   url: 'http://127.0.0.1:7820'
@@ -14,6 +15,12 @@ gateway:
   token: 'change-me'
   # 单次请求超时（毫秒）
   timeout: 20000
+  # 地址是 127.0.0.1 / localhost 且连不上时，插件自动把 bridge/server.mjs 拉起来。
+  # 指向别人机器的远程网关不受影响（永不被拉起）。不想让它自作主张就写 false。
+  autoStart: true
+  # 数据源。留空 = 自动判断：bridge/mate.json 里有真凭证就用 mateapp，否则 demo。
+  # 也可以写死 'demo' / 'mateapp'，或你自己实现的 provider 名。
+  provider: ''
 
 # ---------------- 静态游戏数据 ----------------
 # 特工 / 地图 / 武器的中文名与图标，来自 valorant-api.com（免费无 key）

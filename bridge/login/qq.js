@@ -517,7 +517,14 @@ export const qqAdapter = {
         }
       }
       default:
-        return { status: 'waiting', message: cb.message || `未知状态 ${cb.code}` }
+        // code 和原文都带上：官方改格式/换错误码时，没有这两样根本没法查。
+        // 100044 = sign of app is error，是「应用签名」不对，不是码的问题。
+        return {
+          status: 'waiting',
+          code: cb.code,
+          raw: text.slice(0, 300),
+          message: cb.message || `未知状态 ${cb.code}`
+        }
     }
   }
 }

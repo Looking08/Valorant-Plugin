@@ -37,15 +37,27 @@ export const ACCOUNTS_DIR = process.env.MATE_ACCOUNTS_DIR || path.join(HERE, 'ac
 /** 用户标识只允许这些字符，挡住 `../` 这类目录穿越 */
 const SAFE_USER = /^[A-Za-z0-9_-]{1,64}$/
 
+/**
+ * 把 user 压成能当文件名的 key。
+ *
+ * 以前这里遇到非法字符直接抛 BAD_REQUEST。问题是 **QQ 官方机器人的 `e.user_id`
+ * 天生带冒号**（`群号:成员openid`，比如 `3889734773:11ABC2EAF…`），
+ * 于是所有指令都被判 400，插件那边看到的就是「怎么都绑不上、名字也没错」。
+ *
+ * 现在改成**归一化**而不是拒绝：非法字符统一换成下划线，去掉首尾下划线，截断长度。
+ * 关键是这套规则必须和插件侧 `utils/gateway.js` 的 `safeUser()` **逐字符一致** ——
+ * 两边算出来的 key 不一样，就会变成「凭证在 A 名下、请求查 B」。
+ *
+ * 仍然挡住目录穿越：`.` 和 `/` 都会被换成 `_`，`../` 进不来。
+ */
 export function normalizeUser (user) {
   const key = String(user ?? '').trim()
   if (!key) return ''
-  if (!SAFE_USER.test(key)) {
-    const error = new Error(`用户标识不合法：只允许字母、数字、下划线、短横线（收到 ${key.slice(0, 40)}）`)
-    error.code = 'BAD_REQUEST'
-    throw error
-  }
+  if (SAFE_USER.test(key)) return key
   return key
+    .replace(/[^A-Za-z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 96)
 }
 
 /* ---------------- 基础配置（mtime 缓存，改完不用重启） ---------------- */

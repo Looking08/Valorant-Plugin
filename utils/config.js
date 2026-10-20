@@ -17,7 +17,13 @@ export function gateway () {
   return {
     url: String(c.gateway?.url || '').replace(/\/+$/, ''),
     token: String(c.gateway?.token || ''),
-    timeout: Number(c.gateway?.timeout) || 20000
+    timeout: Number(c.gateway?.timeout) || 20000,
+    // 地址是 127.0.0.1/localhost 且连不上时，插件自己把网关拉起来。
+    // 指向别人机器的远程网关永远不会触发（见 utils/gateway.js 的 isLocalUrl）。
+    autoStart: c.gateway?.autoStart !== false,
+    // 留空 = 自动判断：bridge/mate.json 里有真凭证就用 mateapp，否则 demo。
+    // 想强制用某个 provider（比如自建的 http provider）就在这里写死。
+    provider: String(c.gateway?.provider || '')
   }
 }
 

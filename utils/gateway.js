@@ -19,8 +19,142 @@
  * { "ok": false, "error": { "code": "NOT_FOUND", "message": "查无此账号" } }
  * ```
  */
+import fs from 'node:fs'
+import path from 'node:path'
+import { spawn } from 'node:child_process'
 import { gateway } from './config.js'
 import { remember } from './cache.js'
+
+/** 插件根目录（本文件在 `utils/` 下） */
+const PLUGIN_ROOT = path.resolve(new URL('..', import.meta.url).pathname)
+
+/** 自动拉起的那个网关子进程（只可能有一个） */
+let localChild = null
+/** 上次尝试拉起的时间，防止每次请求都 spawn 一遍 */
+let lastSpawnAt = 0
+/** 连续拉起失败时给用户看的最后一条原因 */
+let lastSpawnError = ''
+
+const SPAWN_COOLDOWN = 60 * 1000
+
+/** 这个地址是不是「本机」—— 只有本机才轮得到我们去拉起 */
+function isLocalUrl (url) {
+  try {
+    const u = new URL(url)
+    return ['127.0.0.1', 'localhost', '::1', '[::1]', '0.0.0.0'].includes(u.hostname)
+  } catch {
+    return false
+  }
+}
+
+function isRefused (error) {
+  return error?.code === 'ECONNREFUSED' || error?.cause?.code === 'ECONNREFUSED'
+}
+
+/**
+ * 自动挑数据源：有 `bridge/mate.json`（真凭证）就用 mateapp，否则 demo。
+ * 这样「下载即用」的人拿到 demo 也能出图，导入凭证后自动切成真实数据。
+ */
+function pickProvider () {
+  try {
+    const file = path.join(PLUGIN_ROOT, 'bridge/mate.json')
+    if (!fs.existsSync(file)) return 'demo'
+    const json = JSON.parse(fs.readFileSync(file, 'utf8'))
+    return json?.login?.cookie ? 'mateapp' : 'demo'
+  } catch {
+    return 'demo'
+  }
+}
+
+/** 等本地网关起来：轮询一个不需要凭证的路由，通了就算成功 */
+async function waitUntilUp (baseUrl, token, timeoutMs = 6000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`${baseUrl}/v1/login/adapters`, {
+        signal: AbortSignal.timeout(1200),
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      })
+      if (res.ok) return true
+    } catch {}
+    await new Promise(r => setTimeout(r, 250))
+  }
+  return false
+}
+
+/**
+ * 把本地网关拉起来。
+ *
+ * 只在「地址是本机 + autoStart 开着 + 真的连不上」这三个条件同时成立时才会被调用，
+ * 所以远程网关（别人共享给你的那份）永远走不到这里。
+ *
+ * @returns {Promise<boolean>} 起来了吗
+ */
+async function startLocalGateway (cfg) {
+  if (localChild && localChild.exitCode === null) return waitUntilUp(cfg.url, cfg.token)
+  if (Date.now() - lastSpawnAt < SPAWN_COOLDOWN) {
+    lastSpawnError = lastSpawnError || '刚刚尝试拉起过，还没到重试时间'
+    return false
+  }
+
+  const script = path.join(PLUGIN_ROOT, 'bridge/server.mjs')
+  if (!fs.existsSync(script)) {
+    lastSpawnError = `找不到网关脚本 ${script}`
+    return false
+  }
+
+  lastSpawnAt = Date.now()
+  let port = '7820'
+  try { port = new URL(cfg.url).port || '80' } catch {}
+
+  const provider = cfg.provider || pickProvider()
+
+  try {
+    localChild = spawn(process.execPath, [script], {
+      cwd: PLUGIN_ROOT,
+      env: {
+        ...process.env,
+        PORT: port,
+        TOKEN: cfg.token || 'change-me',
+        PROVIDER: provider
+      },
+      stdio: 'ignore'
+    })
+  } catch (error) {
+    lastSpawnError = error.message
+    return false
+  }
+
+  localChild.on('error', error => { lastSpawnError = error.message })
+  localChild.on('exit', code => {
+    // 非 0 退出说明它自己起不来（端口占用、凭证坏了），留个原因给用户看
+    if (code) lastSpawnError = `网关进程退出（code=${code}），看 bridge 的报错`
+    localChild = null
+  })
+
+  // 云崽退出时别留孤儿进程
+  process.once('exit', () => { try { localChild?.kill() } catch {} })
+
+  const up = await waitUntilUp(cfg.url, cfg.token)
+  if (!up) lastSpawnError = lastSpawnError || '拉起后 6 秒内没响应，可能端口被占用'
+  else console.log(`[瓦插件] 已自动拉起本地网关：${cfg.url}（数据源 ${provider}）`)
+  return up
+}
+
+/** 连不上网关时的统一措辞；自动拉起失败要把原因带出来，别只说「连不上」 */
+function unreachable (error, triedSpawn = false) {
+  const reason = error?.name === 'TimeoutError' || error?.name === 'AbortError'
+    ? '请求超时'
+    : isRefused(error)
+      ? (triedSpawn ? '本地网关没起来' : '连接被拒绝（多半是网关没启动）')
+      : (error?.message || '未知网络错误')
+  const extra = triedSpawn && lastSpawnError ? `\n自动拉起也没成功：${lastSpawnError}` : ''
+  return new GatewayError(
+    `连不上战绩网关：${reason}${extra}\n`
+    + '请检查 gateway.url 配置，或在本插件目录手动执行 `pnpm bridge`。',
+    'UNREACHABLE'
+  )
+}
 
 /** 带「用户能看懂的原因」的错误 */
 export class GatewayError extends Error {
@@ -44,6 +178,25 @@ const NO_GATEWAY_HINT = [
   "  gateway.token: '你设置的令牌'"
 ].join('\n')
 
+/**
+ * 把云崽的用户标识压成网关能接受的形状。
+ *
+ * ⚠️ QQ 官方机器人的 `e.user_id` 是 `群号:成员openid` 这种**带冒号**的复合串。
+ *    网关把 user 当文件名用（`bridge/accounts/<user>.json`），只放行 `[A-Za-z0-9_-]`，
+ *    见到冒号直接 400 BAD_REQUEST。插件这边一旦 400，所有指令都会走到「不认识这个格式」
+ *    那种兜底文案上 —— 表现就是「名字没错，但怎么都绑不上」。
+ *
+ * 所以在**唯一的出口**这里统一压一遍：非法字符换下划线，去掉首尾，限长。
+ * 网关那边收到的永远是干净 key，两个存储（UserData 用原始 id，凭证用压缩 key）各管各的。
+ */
+export function safeUser (user) {
+  return String(user ?? '')
+    .trim()
+    .replace(/[^A-Za-z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 96)
+}
+
 async function request (endpoint, params = {}, options = {}) {
   const cfg = gateway()
 
@@ -52,33 +205,41 @@ async function request (endpoint, params = {}, options = {}) {
   const url = new URL(`${cfg.url}${endpoint}`)
   for (const [key, value] of Object.entries(params)) {
     if (value === undefined || value === null || value === '') continue
-    url.searchParams.set(key, String(value))
+    // user 要过一遍压缩：QQ 官方机器人的 id 带冒号，网关不收
+    const text = key === 'user' ? safeUser(value) : String(value)
+    if (!text) continue
+    url.searchParams.set(key, text)
   }
+
+  const send = () => fetch(url, {
+    method: options.method || 'GET',
+    body: options.body ? JSON.stringify(options.body) : undefined,
+    signal: AbortSignal.timeout(cfg.timeout),
+    headers: {
+      Accept: 'application/json',
+      ...(options.body ? { 'Content-Type': 'application/json; charset=utf-8' } : {}),
+      ...(cfg.token ? { Authorization: `Bearer ${cfg.token}` } : {}),
+      ...(options.headers || {})
+    }
+  })
 
   let res
   try {
-    res = await fetch(url, {
-      method: options.method || 'GET',
-      body: options.body ? JSON.stringify(options.body) : undefined,
-      signal: AbortSignal.timeout(cfg.timeout),
-      headers: {
-        Accept: 'application/json',
-        ...(options.body ? { 'Content-Type': 'application/json; charset=utf-8' } : {}),
-        ...(cfg.token ? { Authorization: `Bearer ${cfg.token}` } : {}),
-        ...(options.headers || {})
-      }
-    })
+    res = await send()
   } catch (error) {
-    // 连不上：网关没起 / 地址写错 / 防火墙
-    const reason = error.name === 'TimeoutError' || error.name === 'AbortError'
-      ? '请求超时'
-      : error.code === 'ECONNREFUSED'
-        ? '连接被拒绝（多半是网关没启动）'
-        : error.message
-    throw new GatewayError(
-      `连不上战绩网关：${reason}\n请检查 gateway.url 配置与网关运行状态。`,
-      'UNREACHABLE'
-    )
+    // 本机网关没起？按配置尝试拉起来再打一次。
+    // 远程网关（别人共享的那份）走不到这里 —— isLocalUrl 会挡掉。
+    if (isRefused(error) && cfg.autoStart !== false && isLocalUrl(cfg.url)) {
+      const up = await startLocalGateway(cfg).catch(() => false)
+      if (!up) throw unreachable(error, true)
+      try {
+        res = await send()
+      } catch (retryError) {
+        throw unreachable(retryError, true)
+      }
+    } else {
+      throw unreachable(error, false)
+    }
   }
 
   // ⚠️ 先把响应体解析出来，**再**看状态码。

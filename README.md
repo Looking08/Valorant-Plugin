@@ -41,29 +41,44 @@ cd ./plugins/Valorant-Plugin && pnpm install
 
 ## 起数据源
 
-插件不直接连游戏接口，中间隔一个小网关（`bridge/`，零依赖）：
+插件不直接连游戏接口，中间隔一个小网关（`bridge/`，**零依赖**，只要装有 node）。
+
+**网关代码随仓库一起下载，但它不会自己跑起来。** 所以插件做了一件事：发现本机网关连不上，
+就自己把 `bridge/server.mjs` 拉起来（`gateway.autoStart`，默认开）。新手什么都不用做：
+
+```bash
+git clone https://github.com/Looking08/Valorant-Plugin.git ./plugins/Valorant-Plugin
+cd ./plugins/Valorant-Plugin && pnpm install
+# 重启云崽，日志里出现「[瓦插件] 已自动拉起本地网关」就是了
+```
+
+这时候用的是 `demo` 数据源——数据是编的，但图是真的，先看效果、调 UI 正好。
+
+想自己管（生产环境推荐，崩了能看见日志）就手动起，插件看到端口有响应就不会再插手：
 
 ```bash
 cd plugins/Valorant-Plugin
-TOKEN=你的令牌 pnpm bridge
+TOKEN=你的令牌 pnpm bridge          # 前台跑，Ctrl-C 停
 ```
 
-然后把 `config/config/config.yaml` 改成一样的：
+然后把 `config/config/config.yaml` 的 token 改成一样的（`.url` 默认就是 `127.0.0.1:7820`，改完热更新）。
 
-```yaml
-gateway:
-  url: 'http://127.0.0.1:7820'
-  token: '你的令牌'
-```
+> `autoStart` **只对本机地址生效**。`gateway.url` 指向别人的机器时，连不上也不会去拉——那是人家的事。
 
-配置热更新，不用重启。默认数据源是 `demo`，不配登录态也能出图，就是数据假的，拿来调 UI 正好。
+### 换成真实数据
 
-要真实数据就换 `mateapp`：
+`demo` 之上是 `mateapp`，需要一个**你自己的掌瓦登录态**（抓包得来的 `bridge/mate.json`）：
 
 ```bash
 cp bridge/providers/mateapp.example.json bridge/mate.json
-PROVIDER=mateapp TOKEN=你的令牌 pnpm bridge
+# 往里填 login.cookie / login.scene，怎么来的见下面「抓包导入」
 ```
+
+`gateway.provider` 留空时自动判断：`bridge/mate.json` 里有 cookie 就用 `mateapp`，否则 `demo`。
+想锁死就填 `demo` / `mateapp`。
+
+⚠️ `bridge/mate.json`、`bridge/accounts/`、`config/config/`、`data/` 都在 `.gitignore` 里，**不会随仓库分发**。
+理由很直白：那几个文件里是你的登录 cookie，谁拿到谁就能查你的号。
 
 ## 指令
 
@@ -89,19 +104,25 @@ PROVIDER=mateapp TOKEN=你的令牌 pnpm bridge
 
 ## 登录
 
-扫码，最省事：
+> ⚠️ **扫码登录暂时不可用（2026-10 实测）。**
+>
+> 腾讯给掌瓦这个 appid 分配的 `check_sig` 前置机下线了：扫码、手机确认、`ptqrlogin` 返回
+> `code=0 登录成功` 全都正常，但最后换 token 的那一跳被指到
+> `ptlogin4.openmobile.qq.com` / `ptlogin4.graph.qq.com`——这两台的权威 DNS 现在返回 `0.0.0.1`，
+> 登录集群上也没有对应的 vhost。换主机名会被弹回不带 `code` 的 `s_url`。
+>
+> 掌瓦 App 自己不受影响，因为它走 QQ SDK 的 SSO，根本不经过 `check_sig`；服务器端复现不了。
+> 排查过程和证据记在 `bridge/providers/mateapp-scanlogin.md`。
+>
+> `#瓦扫码登录` 仍然能用，但会先弹一段提醒再发码——不会假装没事让你白扫。
+> `bridge/login/qq.js` 里换掌瓦凭证的后半段是完好的，
+> 哪天拿到一个可用的 QQ `openid` + `access_token`，接上就能跑。
 
-```
-#瓦扫码登录
-```
-
-机器人发一张二维码，手机 QQ 扫完在手机上点「确认登录」。码 2 分钟内有效，过期重发。
-
-偶尔会没反应——QQ 那边风控，重发一次通常就好。实在不行走下面抓包。
+所以现在只有一条路：**抓包导入**（下一节）。一次能管很久，网关每 25 分钟自动续期。
 
 ## 抓包导入
 
-扫码不通时的兜底，这套一定可用。
+目前唯一能拿到真实数据的路，走通了就一直可用。
 
 1. 手机装个抓包 App（安卓 Reqable，iPhone Stream / Thor），按引导装证书。iPhone 还得去「设置 → 通用 → 关于本机 → 证书信任设置」把开关打开，这步忘了就什么都抓不到。
 2. 开着抓包打开掌瓦，进「我的 → 战绩」，下滑一下，点进任意一局。
@@ -119,7 +140,7 @@ node tools/har2cred.mjs 掌瓦.har --docker --user=你的QQ --token=网关令牌
 
 ## 注意事项
 
-- 扫码能省掉抓包，但它依赖 QQ 的登录页，服务器连不上或风控时只能退回抓包。票据没彻底失效前会自动续（`KEEP_ALIVE=0` 关掉）。
+- 扫码那条路暂时堵死了（见「登录」），只能抓包。票据没彻底失效前网关会自动续（`KEEP_ALIVE=0` 关掉）。
 - 掌瓦不给的就显示「—」：KAST、枪械总伤害。列表里的比分、ADR、爆头率、回合数、时长是从记分板顺手取的（不额外发请求），`mvp.lookup: false` 关掉记分板查询时它们会一起变「—」。
 - 别人只能查「跟你同过一场」的，陌生人查不了：掌瓦没有按昵称搜人的接口，试过，服务端连表都没有。面板同理，只认自己的登录态。
 
