@@ -13,6 +13,9 @@ bridge/mate.json
 # 一人一份的登录态（每个文件名就是一个 QQ 号，里面是 cookie + scene）
 bridge/accounts/
 
+# 同场玩家索引（真实玩家名 + 他的 scene，运行时生成，别进版本库）
+bridge/peers.json
+
 # 依赖
 node_modules/
 
