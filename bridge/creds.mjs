@@ -34,6 +34,31 @@ export const CONFIG_PATH = process.env.MATE_CONFIG || path.join(HERE, 'mate.json
 /** 每用户覆盖层目录 */
 export const ACCOUNTS_DIR = process.env.MATE_ACCOUNTS_DIR || path.join(HERE, 'accounts')
 
+/** 仓库里带的模板（mate.json 本身在 .gitignore 里，不能随仓库分发） */
+const EXAMPLE_PATH = path.join(HERE, 'providers/mateapp.example.json')
+
+/**
+ * 新装的实例是没有 `bridge/mate.json` 的 —— 它里面是登录 cookie，被 .gitignore
+ * 挡着，仓库只带 `providers/mateapp.example.json` 这份模板。
+ *
+ * 结果就是「先有蛋还是先有鸡」又来一次：导入要读基础配置（baseUrl / endpoints），
+ * 读配置又要求 mate.json 已经存在，而用户正是要**通过导入**才填得上凭证 ——
+ * 于是第一句就卡死在「找不到掌瓦配置文件」，且提示让他去手抄模板。
+ *
+ * 所以缺了就从模板补一份：模板里有 baseUrl / endpoints / envelope，
+ * 足够跑通验证，凭证随后由 saveCredential 写进 accounts/<user>.json。
+ */
+function ensureBase () {
+  if (fs.existsSync(CONFIG_PATH)) return
+  if (!fs.existsSync(EXAMPLE_PATH)) return
+  try {
+    fs.copyFileSync(EXAMPLE_PATH, CONFIG_PATH)
+    console.log(`[gateway] bridge/mate.json 不存在，已从模板生成：${CONFIG_PATH}`)
+  } catch (error) {
+    console.log(`[gateway] 自动补 mate.json 失败：${error.message}`)
+  }
+}
+
 /** 用户标识只允许这些字符，挡住 `../` 这类目录穿越 */
 const SAFE_USER = /^[A-Za-z0-9_-]{1,64}$/
 
@@ -65,6 +90,8 @@ export function normalizeUser (user) {
 let baseCache = { mtime: 0, config: null }
 
 export function readBase () {
+  ensureBase()
+
   let stat
   try {
     stat = fs.statSync(CONFIG_PATH)
