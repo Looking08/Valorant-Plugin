@@ -119,7 +119,7 @@ cp bridge/providers/mateapp.example.json bridge/mate.json
 > `bridge/login/qq.js` 里换掌瓦凭证的后半段是完好的，
 > 哪天拿到一个可用的 QQ `openid` + `access_token`，接上就能跑。
 
-所以现在只有一条路：**抓包导入**（下一节）。一次能管很久，网关每 25 分钟自动续期。
+所以现在只有一条路：**抓包导入**（下一节）。导入一次能用 3 天，期间网关自动续期。
 
 ## 抓包导入
 
@@ -137,11 +137,27 @@ node tools/har2cred.mjs 掌瓦.har                    # 打出一行，自己发
 node tools/har2cred.mjs 掌瓦.har --docker --user=你的QQ --token=网关令牌
 ```
 
-登录态可能会过期。网关会**每 25 分钟自动续一次 access_token**（原理、`bridge/providers/mateapp-autorefresh.md` 有实测记录），能撑挺久；真失效了查询会直接告诉你「登录态失效」，重新抓一次再导入就行，不影响别人。
+**登录态的有效期是硬 3 天。** 抓来的票据里带着一个底层 web ticket，服务端明确给了起止时间：
+
+```
+auth web ticket fail err=DecodeTgpTicket err=ticket expire
+now=1792557703 validFrom=1792295134, validTo=1792554334
+```
+
+实测一份：`validFrom` 到 `validTo` 正好 **259200 秒 = 3 天整**，到点就失效，没有缓冲。
+
+网关每 25 分钟续的是**上层 access_token**（那个只管 1 小时，`time_interval=3600`），
+**续不到这个 3 天的底层票据** —— 真能续它的 `refresh_client_ticket` 要 `ct` 且需要 App 签名，
+我们拿不到。所以：
+
+- 3 天内：随便用，网关自己续 access_token，你不用管
+- 满 3 天：查询会直接报「登录态失效」，**重新抓一次再导入**就行，不影响别人
+
+不确定还有效没，发 `#瓦登录状态`。
 
 ## 注意事项
 
-- 扫码那条路暂时堵死了（见「登录」），只能抓包。票据没彻底失效前网关会自动续（`KEEP_ALIVE=0` 关掉）。
+- 扫码那条路暂时堵死了（见「登录」），只能抓包。登录态**硬 3 天**过期，网关自动续的是上层 access_token（`KEEP_ALIVE=0` 关掉），续不到那 3 天 —— 到期只能重抓。
 - 掌瓦不给的就显示「—」：KAST、枪械总伤害。列表里的比分、ADR、爆头率、回合数、时长是从记分板顺手取的（不额外发请求），`mvp.lookup: false` 关掉记分板查询时它们会一起变「—」。
 - 别人只能查「跟你同过一场」的，陌生人查不了：掌瓦没有按昵称搜人的接口，试过，服务端连表都没有。面板同理，只认自己的登录态。
 
