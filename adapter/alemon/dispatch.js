@@ -105,3 +105,8 @@ export async function dispatch () {
 export default async function handler () {
   return dispatch()
 }
+
+/** 启动预热：第一次调用会扫 apps/ 建表。让 onReady 里调一次，
+ *  启动日志就能直接看到「已注册 N 条指令（alemonjs 适配）」，
+ *  不用等第一条消息才暴露扫描/垫片错误。 */
+export const warmup = buildTable

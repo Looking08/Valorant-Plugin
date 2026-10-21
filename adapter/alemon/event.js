@@ -62,12 +62,18 @@ export async function createYunzaiEvent () {
 
   // @ 的人：useMention 默认会过滤掉机器人，所以「只 @ 了机器人」时拿到空 —— 和云崽的
   // `e.at && !e.atme` 行为一致。拿不到也别炸，@ 只是可选功能。
+  //
+  // 优化：只有「被 @ 了」或「群/频道消息」才可能有 mention；私聊且没 @ 我时根本不可能有
+  // mention，跳过查询既能避免真实私聊里刷 `No mention data found` 的报错，也省一次无意义的
+  // 异步调用。（某些平台适配器在私聊下调用 mention.findOne 会直接抛错）
   let atUser = null
-  try {
-    const res = await mention.findOne()
-    if (res?.count && res?.data) atUser = res.data
-  } catch {
-    atUser = null
+  if (ev.IsAtMe || !ev.IsPrivate) {
+    try {
+      const res = await mention.findOne()
+      if (res?.count && res?.data) atUser = res.data
+    } catch {
+      atUser = null
+    }
   }
 
   /** 回复。云崽的 e.reply 返回 Promise，这里保持一致 */

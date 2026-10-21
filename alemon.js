@@ -29,6 +29,11 @@ installShim()
 // 出图：换成 art-template + puppeteer 的实现。没装那两个包也不影响指令，只是出不了图。
 await installRenderer()
 
+// 导入即预热：让「已注册 N 条指令（alemonjs 适配）」在框架加载本模块时就打印，
+// 不依赖 onReady 时机（某些环境下 onReady 可能晚于用户第一条消息）。
+// buildTable 有缓存，和 onReady 里的预热重复跑也无害。
+void import('./adapter/alemon/dispatch.js').then(m => m.warmup?.()).catch(() => {})
+
 /**
  * 总入口正则。要覆盖所有指令的开头：
  * - `#瓦面板` / `瓦面板`（# 可省略）
@@ -57,5 +62,7 @@ export default defineChildren({
 
   onReady () {
     logger.info('[瓦插件] 已挂载（ALemonJS 适配层）')
+    // 预热：建表失败（shim / 扫描 / 正则）在启动时就暴露，不用等用户发第一条消息
+    import('./adapter/alemon/dispatch.js').then(m => m.warmup?.()).catch(() => {})
   }
 })
