@@ -28,7 +28,7 @@ git clone https://github.com/Looking08/Valorant-Plugin.git ./plugins/Valorant-Pl
 cd ./plugins/Valorant-Plugin && pnpm install
 ```
 
-目录名得是 `Valorant-Plugin`，代码里写死了。重启云崽，日志里出现「无畏契约插件载入完成 / 成功加载：8 个」就算挂上了。
+目录名得是 `Valorant-Plugin`，代码里写死了。重启云崽，日志里出现「无畏契约插件载入完成 / 成功加载：9 个」就算挂上了。
 
 之后升级用 `#瓦更新`，不用再进目录。
 
@@ -37,6 +37,45 @@ cd ./plugins/Valorant-Plugin && pnpm install
 
 插件目录是容器里的 `/root/TRSS_AllBot/TRSS-Yunzai/plugins/Valorant-Plugin`，
 宿主机一般在 `~/TRSS_AllBot/TRSS-Yunzai/plugins/`，直接扔进去，TRSS 会热加载。
+</details>
+
+## 装到 ALemonJS
+
+除了云崽，同一份代码也能跑在 [ALemonJS](https://github.com/lemonade-lab/alemonjs) 上（QQ / Discord / KOOK / Telegram / OneBot / 飞书 … 一套代码通吃）。
+
+在你的 alemonjs 项目里：
+
+```bash
+npm i valorant-plugin
+# 出图用的，不装也能跑（只是所有图片会退化成文字）
+npm i art-template puppeteer
+```
+
+然后在 `alemon.config.yaml` 里挂上：
+
+```yaml
+apps:
+  - valorant-plugin
+```
+
+启动，日志里出现「[瓦插件] 已挂载（ALemonJS 适配层）」就成了。指令和云崽完全一样。
+
+<details>
+<summary>适配是怎么做的（想改代码看这里）</summary>
+
+两个框架的差别只在「怎么注册指令、怎么发消息、怎么出图」，业务逻辑一点没动：
+
+| | 云崽 | ALemonJS |
+| --- | --- | --- |
+| 入口 | `index.js` 导出 `{ apps }` | `alemon.js` 导出 `defineChildren` |
+| 指令 | 框架读 `rule[].reg` 正则 | `router.res({regular})` 总入口 → `adapter/alemon/dispatch.js` 自己按 rule 分发 |
+| 事件 | `e.msg` / `e.user_id` / `e.at` / `e.reply()` | `adapter/alemon/event.js` 把 alemonjs 事件**伪装成云崽的 e** |
+| 出图 | 框架自带 puppeteer + art-template | `adapter/alemon/render.js`（art-template + puppeteer） |
+| `plugin` 全局 | 框架提供 | `adapter/shim.js` 补 |
+
+所以加指令只改 `apps/`，两边同时生效。扫指令表的逻辑抽在 `adapter/apps.js`，两边共用同一份，不可能对不上。
+
+离线自检：`node test/alemon-smoke.mjs`（不需要装 alemonjs）。
 </details>
 
 ## 起数据源
