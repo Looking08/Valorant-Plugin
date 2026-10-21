@@ -50,7 +50,8 @@ cd ./plugins/Valorant-Plugin && pnpm install
 在你的 alemonjs 项目里：
 
 ```bash
-npm i valorant-plugin
+# 直接从本仓库下载安装（若已发到 npm，也可改成 npm i valorant-plugin）
+npm i github:Looking08/Valorant-Plugin
 # 出图用的，不装也能跑（只是所有图片会退化成文字）
 npm i art-template puppeteer
 ```
