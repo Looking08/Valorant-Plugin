@@ -58,9 +58,15 @@ function isRefused (error) {
 function pickProvider () {
   try {
     const file = path.join(PLUGIN_ROOT, 'bridge/mate.json')
-    if (!fs.existsSync(file)) return 'demo'
-    const json = JSON.parse(fs.readFileSync(file, 'utf8'))
-    return json?.login?.cookie ? 'mateapp' : 'demo'
+    if (fs.existsSync(file)) {
+      const json = JSON.parse(fs.readFileSync(file, 'utf8'))
+      if (json?.login?.cookie) return 'mateapp'
+    }
+    // 已经有人导入过（一人一份落在 bridge/accounts/<user>.json）也该继续用 mateapp，
+    // 否则重启一次就退回 demo，别人查自己就全废了。
+    const dir = path.join(PLUGIN_ROOT, 'bridge/accounts')
+    if (fs.existsSync(dir) && fs.readdirSync(dir).some(f => f.endsWith('.json'))) return 'mateapp'
+    return 'demo'
   } catch {
     return 'demo'
   }
@@ -90,8 +96,8 @@ async function waitUntilUp (baseUrl, token, timeoutMs = 6000) {
  *
  * @returns {Promise<boolean>} 起来了吗
  */
-async function startLocalGateway (cfg) {
-  if (localChild && localChild.exitCode === null) return waitUntilUp(cfg.url, cfg.token)
+async function startLocalGateway (cfg, providerOverride = '') {
+  if (!providerOverride && localChild && localChild.exitCode === null) return waitUntilUp(cfg.url, cfg.token)
   if (Date.now() - lastSpawnAt < SPAWN_COOLDOWN) {
     lastSpawnError = lastSpawnError || '刚刚尝试拉起过，还没到重试时间'
     return false
@@ -107,7 +113,7 @@ async function startLocalGateway (cfg) {
   let port = '7820'
   try { port = new URL(cfg.url).port || '80' } catch {}
 
-  const provider = cfg.provider || pickProvider()
+  const provider = providerOverride || cfg.provider || pickProvider()
 
   try {
     localChild = spawn(process.execPath, [script], {
@@ -384,8 +390,15 @@ export async function healthInfo () {
  * 别把整个 data 当成状态用（第一版就这么写错，结果永远显示「还没导入」）。
  */
 export async function credentialStatus (user) {
-  const json = await request('/v1/creds', { user }, { allowEmpty: true })
-  return json.data?.current || { bound: false }
+  try {
+    const json = await request('/v1/creds', { user }, { allowEmpty: true })
+    return json.data?.current || { bound: false }
+  } catch (error) {
+    // demo 数据源压根没有「一人一份登录态」这回事。查状态时别把 NOT_SUPPORTED
+    // 抛到用户脸上 —— 那就是「还没导入」，导入的时候插件会自己把网关换成 mateapp。
+    if (error?.code === 'NOT_SUPPORTED') return { bound: false, unsupported: true }
+    throw error
+  }
 }
 
 /**
@@ -406,6 +419,50 @@ export async function boundAccounts (user = '') {
 }
 
 /**
+ * 把本地网关换成指定数据源重起一次（只对我们自己拉起的那个有效）。
+ *
+ * 网关要是别人（systemd / tmux / 手动 pnpm bridge）起的，我们杀不掉它，
+ * 再 spawn 也会端口冲突 —— 那种情况由 ensureMultiUser() 给出可执行的提示。
+ */
+async function restartAs (provider) {
+  try { localChild?.kill() } catch {}
+  localChild = null
+  // 绕开冷却，否则「刚起过」就换不了
+  lastSpawnAt = 0
+  lastSpawnError = ''
+  await startLocalGateway(gateway(), provider).catch(() => false)
+  await new Promise(r => setTimeout(r, 300))
+}
+
+/**
+ * 导入登录态前，确认网关跑的是 mateapp。
+ *
+ * 这里有个鸡生蛋的问题：`pickProvider()` 只在「mate.json 里已经有 cookie」时
+ * 才起 mateapp，否则起 demo —— 可新装的实例正是要**通过导入**才有 cookie，
+ * 于是永远停在 demo，一句「demo 不支持按用户导入登录态」就把人堵死了，
+ * 而且没有任何办法自救。所以导入前先看 /health.multiUser，不是就换成 mateapp。
+ */
+async function ensureMultiUser () {
+  const cfg = gateway()
+  if (cfg.autoStart === false || !isLocalUrl(cfg.url)) return
+
+  const before = await healthInfo().catch(() => null)
+  if (before?.multiUser) return
+
+  await restartAs('mateapp')
+  if ((await healthInfo().catch(() => null))?.multiUser) return
+
+  throw new GatewayError(
+    '导入登录态需要 mateapp 数据源，但当前网关不是。\n'
+    + '在插件目录下执行（或把常驻那份的 PROVIDER 改掉再重启）：\n'
+    + '  PROVIDER=mateapp pnpm bridge\n\n'
+    + `当前网关自报：${before?.provider || '未知'}`
+    + (lastSpawnError ? `\n（自动切换没成功：${lastSpawnError}）` : ''),
+    'NOT_SUPPORTED'
+  )
+}
+
+/**
  * 导入登录态。
  *
  * 掌瓦没有可复现的扫码流程，所以这里的「登录」= 交一份抓包得到的
@@ -415,6 +472,9 @@ export async function boundAccounts (user = '') {
  * @param {{cookie: string, scene?: string, sceneDetail?: string}} payload
  */
 export async function importCredential (user, payload) {
+  // 新装的实例默认起 demo，而 demo 存不了登录态 —— 先把网关换成 mateapp，
+  // 不然用户会卡在「demo 不支持按用户导入登录态」上，且无从自救。
+  await ensureMultiUser()
   const json = await request('/v1/creds', { user }, { method: 'POST', body: { user, ...payload } })
   return json.data
 }

@@ -74,8 +74,13 @@ cp bridge/providers/mateapp.example.json bridge/mate.json
 # 往里填 login.cookie / login.scene，怎么来的见下面「抓包导入」
 ```
 
-`gateway.provider` 留空时自动判断：`bridge/mate.json` 里有 cookie 就用 `mateapp`，否则 `demo`。
-想锁死就填 `demo` / `mateapp`。
+`gateway.provider` 留空时自动判断：`bridge/mate.json` 里有 cookie、或 `bridge/accounts/` 下已经有人导入过，
+就用 `mateapp`，否则 `demo`。想锁死就填 `demo` / `mateapp`。
+
+> **不用手动做这一步。** 直接发 `#瓦导入 <cURL>` 就行：插件会先看网关 `/health` 的 `multiUser`，
+> 发现是 `demo` 就自动把它换成 `mateapp` 重起一次再导入。
+> 只有网关是你自己用 systemd / tmux / `pnpm bridge` 常驻起的（插件杀不掉）才需要手动改 PROVIDER ——
+> 那种情况插件会直接把该执行哪条命令打给你。
 
 ⚠️ `bridge/mate.json`、`bridge/accounts/`、`config/config/`、`data/` 都在 `.gitignore` 里，**不会随仓库分发**。
 理由很直白：那几个文件里是你的登录 cookie，谁拿到谁就能查你的号。
