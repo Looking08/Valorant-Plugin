@@ -21,6 +21,12 @@
 
 ## 安装
 
+这个插件**同一份代码同时支持云崽（Yunzai）和 ALemonJS**——下载的是同一个仓库，区别只在入口：
+云崽加载 `index.js`、ALemonJS 加载 `alemon.js`（由 `package.json` 的 `exports` 自动切换），
+`apps/` 业务代码一份都不用改。先选你的框架：
+
+### 方案 A：云崽（Yunzai / TRSS-Yunzai / Miao …）
+
 在云崽根目录：
 
 ```bash
@@ -39,9 +45,7 @@ cd ./plugins/Valorant-Plugin && pnpm install
 宿主机一般在 `~/TRSS_AllBot/TRSS-Yunzai/plugins/`，直接扔进去，TRSS 会热加载。
 </details>
 
-## 装到 ALemonJS
-
-除了云崽，同一份代码也能跑在 [ALemonJS](https://github.com/lemonade-lab/alemonjs) 上（QQ / Discord / KOOK / Telegram / OneBot / 飞书 … 一套代码通吃）。
+### 方案 B：ALemonJS（QQ / Discord / KOOK / Telegram / OneBot / 飞书 …）
 
 在你的 alemonjs 项目里：
 
@@ -51,7 +55,7 @@ npm i valorant-plugin
 npm i art-template puppeteer
 ```
 
-然后在 `alemon.config.yaml` 里挂上：
+`alemon.config.yaml` 挂上：
 
 ```yaml
 apps:
@@ -77,6 +81,9 @@ apps:
 
 离线自检：`node test/alemon-smoke.mjs`（不需要装 alemonjs）。
 </details>
+
+> 想单独锁定 ALemonJS 版？直接 `git clone` 上面的仓库即可，两个框架的代码都在里面；
+> 也可以 `git checkout v0.3.0`（首个带 ALemonJS 适配的版本）固定下来。
 
 ## 起数据源
 
