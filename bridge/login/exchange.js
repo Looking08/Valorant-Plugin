@@ -41,7 +41,17 @@ export const UA_MVAL = 'mval/2.4.0.10053 Channel/10068 Manufacturer/Xiaomi '
   + 'AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 '
   + 'Chrome/101.0.4951.61 Mobile Safari/537.36'
 
-/** 掌瓦自己的微信 appid（APK: ShareInitTask 的 `c.g()` 分支），排第一 */
+/**
+ * 微信 AppID —— 注意这是**公开标识，不是密钥**。
+ *
+ * AppID 是客户端每次请求都明文带在 URL 里的东西（`?appid=…`），随便抓个包就有，
+ * 拿到它也换不出 token：换票要 AppSecret 或 App 签名，那两样我们这里都没有。
+ * GitHub 的 secret scanning 会把它当 secret 报（`tencent_wechat_api_app_id`），
+ * 那是启发式误报，仓库里对应的告警按 false positive 处理。
+ *
+ * 掌瓦自己的（APK: ShareInitTask 的 `c.g()` 分支）排第一；
+ * 第二个是掌上英雄联盟的，留着只为兼容旧票据。
+ */
 export const WX_APPIDS = ['wxcbb49f1f39656c2a', 'wx5a4a8ac0fd48303a']
 
 const DEFAULT_MCODE = process.env.MVAL_MCODE || '132f0a77d34402abc8463d60100011d19b0e'

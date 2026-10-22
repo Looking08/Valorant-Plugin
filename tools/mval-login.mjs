@@ -12,7 +12,8 @@
  *   # QQ：从任何能拿到 QQ 互联 token 的地方取 openid / access_token
  *   node tools/mval-login.mjs qq --openid=XXXX --token=YYYY --user=123456 --write
  *
- *   # 微信：code 必须是掌瓦 appid（wx5a4a8ac0fd48303a）签发的，且只能用一次
+ *   # 微信：code 必须是掌瓦 appid（wxcbb49f1f39656c2a）签发的，且只能用一次
+ *   #       用成掌盟的 wx5a4a8ac0fd48303a 一定 40029（微信按 appid 隔离 code）
  *   node tools/mval-login.mjs wx --code=ZZZZ --user=123456 --write
  *
  *   --write 会把凭证落到 bridge/accounts/<user>.json（跟 #瓦导入 同一套格式）
