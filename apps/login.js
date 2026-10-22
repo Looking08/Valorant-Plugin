@@ -6,8 +6,8 @@
  * 1. **扫码**（`#瓦扫码登录`）：机器人出一张 QQ 码，手机 QQ 扫一下确认，
  *    网关拿 QQ 的 openid/access_token 去 `login_by_qq` 换掌瓦自己的凭证，
  *    再问 `get_main_role_raw` 要角色名和 scene。全程不用抓包。
- * 2. **导入**（`#瓦导入`）：抓包抄 cookie + scene。扫码走不通时的兜底
- *    （比如服务器连不上 xui.ptlogin2.qq.com，或者 QQ 侧风控）。
+ * 2. **导入**（`#瓦导入`）：抓包抄 cookie + scene。扫码不便时的兜底
+ *    （比如网关所在机器跑不了浏览器，或者你手上已经有一份没过期的 cookie）。
  *
  * 两条路最后都落成同一份东西：cookie + scene，按 QQ 号分开存，
  * 之后谁发指令就查谁自己的数据，互不相干。
@@ -36,6 +36,7 @@ import {
   saveUserInfo,
   parseRiotId,
   login as loginCfg,
+  imageSegment,
   GatewayError
 } from '#utils'
 import { parsePayload } from '../utils/payload.js'
@@ -103,6 +104,8 @@ export class ValorantLogin extends plugin {
         // 这一种，别把别的内容也吞进来（这条正则很容易写宽，宽了就是灾难）。
         { reg: "^\\s*curl\\s+['\"]?https://app\\.mval\\.qq\\.com", fnc: 'importCred' },
         { reg: '^#?瓦扫码登录[\\s\\S]*$', fnc: 'scanLogin' },
+        // 微信要排在 `#瓦登录` 前面 —— 否则「瓦微信登录」不会崩，但语义会串
+        { reg: '^#?瓦(微信扫码|微信)登录[\\s\\S]*$', fnc: 'scanLoginWx' },
         { reg: '^#?瓦登录[\\s\\S]*$', fnc: 'status' }
       ]
     })
@@ -266,10 +269,23 @@ export class ValorantLogin extends plugin {
    * 也不会出现「上一轮的码把这一轮的结果顶掉」。
    */
   async scanLogin (e) {
+    return this._scanFlow(e, 'qq')
+  }
+
+  /** `#瓦微信登录`：同一套状态机，只是换个适配器 */
+  async scanLoginWx (e) {
+    return this._scanFlow(e, 'wx')
+  }
+
+  async _scanFlow (e, type) {
     // 命名避开 `login`：这个类的方法叫 scanLogin，但 import 的 login() 同名会遮住
     const cfg = loginCfg()
     const ttl = cfg.pollSeconds
     const every = cfg.pollInterval
+    // 文案跟着平台走 —— 别让人拿着微信码去找「手机 QQ」
+    const label = type === 'wx'
+      ? { app: '微信', cmd: '#瓦微信登录', scan: '用微信扫码，扫完在手机上点「确认」——只扫不点没用' }
+      : { app: 'QQ', cmd: '#瓦扫码登录', scan: '用手机 QQ 扫码，扫完在手机上点「确认登录」——只扫不点没用' }
 
     let adapters = []
     try {
@@ -278,50 +294,44 @@ export class ValorantLogin extends plugin {
       await e.reply(explain(error))
       return true
     }
-    if (!adapters.includes('qq')) {
+    if (!adapters.includes(type)) {
       await e.reply([
-        '网关没有挂载 QQ 扫码适配器，只能用导入的方式：',
+        `网关没有挂载 ${label.app} 扫码适配器，只能用导入的方式：`,
         '#瓦登录 看抓包步骤'
       ].join('\n'))
       return true
     }
 
-    await e.reply('正在向 QQ 要二维码…').catch(() => {})
-
-    // 先把话说清楚再发码 —— 2026-10 实测：腾讯把掌瓦 appid 的 check_sig 前置机下线了，
-    // 扫完能确认，但最后换 token 那一步的域名是死的。发码之前提醒，总比让人扫完一脸问号好。
-    await e.reply([
-      '⚠️ 先说一句：扫码登录目前在腾讯侧走不通。',
-      '能出码、能扫、手机上也能确认，但最后一步「拿 token」的地址被腾讯下线了，到不了终点。',
-      '',
-      '想试就扫下面这张；想真能用，走导入：发 #瓦导入（抓包），一次能管很久。'
-    ].join('\n')).catch(() => {})
+    await e.reply(`正在向 ${label.app} 要二维码…`).catch(() => {})
 
     let session
     try {
-      session = await loginStart(cfg.type, e.user_id)
+      session = await loginStart(type, e.user_id)
     } catch (error) {
       await e.reply([
         explain(error),
         '',
-        '扫码走不通时可以退回抓包导入：发 #瓦登录 看步骤。'
+        '扫码不行时可以退回抓包导入：发 #瓦登录 看步骤。'
       ].join('\n'))
       return true
     }
 
+    // ⚠️ 必须包成图片**段**，不能直接丢 Buffer：
+    //    QQ 官方机器人（QQBot 协议端）会把裸 Buffer 当成对象展开成
+    //    {0:255,1:216,…}，认不出 type:"image"，最后当成 markdown 文本发出去，
+    //    客户端就显示「消息加载失败」。详见 utils/render.js 的 imageSegment。
     const image = dataUrlToBuffer(session.qr)
     const tip = [
-      '用手机 QQ 扫码，扫完在手机上点「确认登录」——只扫不点没用。',
+      label.scan,
       ttl
-        ? `码两分钟左右失效，我这边替你盯 ${ttl} 秒；过期了就重发 #瓦扫码登录。`
-        : '码两分钟左右失效，过期了重发 #瓦扫码登录。'
+        ? `码两分钟左右失效，我这边替你盯 ${ttl} 秒；过期了就重发 ${label.cmd}。`
+        : `码两分钟左右失效，过期了重发 ${label.cmd}。`
     ].join('\n')
 
-    // 跟 replyImage 一个路数：直接把 Buffer 丢给 e.reply。
-    // 不拼 segment 数组 —— 有的协议端对「图 + 文字」混排支持得不好，
-    // 二维码发不出去就整个流程卡死了，分开发稳一点。
+    // 图和文字分开发：有的协议端对「图 + 文字」混排支持不好，
+    // 二维码发不出去就整个流程卡死了，分开更稳。
     if (image) {
-      await e.reply(image).catch(() => {})
+      await e.reply(imageSegment(image)).catch(() => {})
     }
     await e.reply(tip)
 
@@ -357,10 +367,11 @@ export class ValorantLogin extends plugin {
         await loginCancel(session.sessionId).catch(() => {})
         await e.reply([
           last.message || '这次没扫成。',
+          ...(last.hint ? ['', last.hint] : []),
           '',
           last.status === 'blocked'
-            ? 'QQ 那边没响应，通常是风控，重发一次 #瓦扫码登录 往往就好了。'
-            : '再来一次：发 #瓦扫码登录',
+            ? `上游没接住这次请求，重发一次 ${label.cmd} 往往就好了。`
+            : `再来一次：发 ${label.cmd}`,
           '老是失败的话改用抓包导入：发 #瓦登录 看步骤。'
         ].join('\n'))
         return true
@@ -369,7 +380,7 @@ export class ValorantLogin extends plugin {
 
     if (last?.status !== 'confirmed') {
       await loginCancel(session.sessionId).catch(() => {})
-      await e.reply('等太久了，这次先取消。想再试就发 #瓦扫码登录。')
+      await e.reply(`等太久了，这次先取消。想再试就发 ${label.cmd}。`)
       return true
     }
 

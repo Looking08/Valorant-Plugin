@@ -1,5 +1,13 @@
 # 扫码登录这条路：存在，只是跟我原来想的不一样
 
+> **📌 本文是排查过程的存档。最终实现请以 `bridge/login/README.md` 为准。**
+>
+> 这里的「追 check_sig 跳转」是**旧流程**（`loginty=6`）。后来发现带 `h5sig` 的
+> 新流程压根不走 `check_sig`，而是走 `openmobile.qq.com/oauth2.0/m_authlist`（活主机）；
+> 微信侧则改用**扫码 SDK**（`sdk/qrconnect`，不需要 redirect_uri 白名单）。
+> 两条链路现在都已实现并实测出码，详见 `bridge/login/README.md` 与
+> `docs/掌瓦登录链路逆向.md` 第八节。
+
 2026-10-20 看了 `wuche-2453198/astrbot_plugin_valorant_analysis`，把他们的方法抄下来核对了一遍。
 
 ## 结论先说

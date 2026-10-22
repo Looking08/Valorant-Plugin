@@ -7,8 +7,12 @@
   ▼
 网关  ── 持有会话、调用适配器、把凭证交给 provider
   │
-  ├── login/qq.js       QQ 互联 ptlogin2
-  ├── login/wechat.js   微信开放平台 qrconnect
+  ├── login/qq.js       QQ 扫码（浏览器优先，纯 HTTP 兜底）
+  ├── login/qqpage.js   └─ 页面式授权：真浏览器跑 m_authorize
+  ├── login/browser.js  └─ 浏览器获取（puppeteer / puppeteer-core / 云崽宿主）
+  ├── login/wechat.js   微信扫码（扫码 SDK，纯 HTTP）
+  ├── login/wxqr.js     └─ sdk_ticket → 出码 → 轮询
+  ├── login/exchange.js code/token → 掌瓦凭证
   ├── login/mock.js     假登录（仅 LOGIN_MOCK=1）
   └── 你自己的 xxx.js
 ```
@@ -64,28 +68,28 @@ waiting ──扫码──> scanned ──确认──> confirmed ──commit�
 
 ## ⚠️ 掌瓦到底怎么登录（先读这段，别白忙）
 
-> **更新（后续已解决）**：掌瓦的战绩接口已经靠抓包定位并打通 ——
-> `app.mval.qq.com/go/codev/career/*`，凭证是 Cookie + `scene`。
-> 走这条路的实际方案在 [../providers/mateapp.md](../providers/mateapp.md)，
-> **不需要扫码**。下面这段留作「为什么扫码对掌瓦不成立」的记录。
+> **更正（2026-10 二次逆向）**：本文早期版本写过「掌瓦没有扫码登录、扫码这条路
+> 走不通」。**这个结论是错的**，错在两处：
+>
+> 1. 掌瓦 App 里确实有扫码登录 —— `com.tencent.wglogin.authsuite.c#a(Activity, a)`
+>    这个方法就是「用微信扫一扫登录」，走的是微信**扫码 SDK**。
+> 2. 我原先找的 `qrconnect`（网站应用）要 redirect_uri 白名单，那条路确实死；
+>    但扫码 SDK 根本没有 redirect_uri 这个概念。
+>
+> 现在 QQ / 微信两条扫码链路都已跑通出码，细节见下面两张表。
 
-「扫码登录 → 一直能查战绩」这个想法听起来顺，但它有个前提不成立：
-
-**掌瓦（掌上无畏契约）里没有「扫码登录」这个动作。**
-
-掌瓦是 App，它的登录链路是：
+掌瓦 App 的原生登录链路是：
 
 ```
 App 内点「微信/QQ 登录」
-  → 拉起微信/QQ 客户端授权（SDK，不是扫码）
-  → 拿到 openid / access_token（腾讯游戏通行证）
-  → 用它去换「游戏角色」（api.val.qq.com/go/account/get_roles_by_game_v2）
-  → 得到 uid + 角色 id，此后所有战绩接口都靠这套身份
+  → 拉起微信/QQ 客户端授权（SDK）
+  → 拿到 openid / access_token（或微信 code）
+  → POST app.mval.qq.com/go/auth/login_by_{qq,wechat} 换掌瓦凭证
+  → 得到 userId / wt / ct / ctt，此后所有战绩接口都靠这套身份
 ```
 
-「扫码」只存在于**第三方网站**接入 QQ/微信登录的场景（`ptlogin2` / `qrconnect`），
-掌瓦自己不用它。而且就算我们能模拟扫码，拿到的也只是一个 `code`，
-换 token 需要**掌瓦自己的 app secret** —— 那是腾讯手里的东西。
+**关键点**：换凭证这一步是掌瓦**服务端**拿它自己的 AppSecret 做的，
+我们不需要 secret —— 这是整件事能成立的前提。
 
 ### 我实际扒到的东西（2026-10，可复现）
 
@@ -98,66 +102,139 @@ App 内点「微信/QQ 登录」
 | `valm.qq.com`（手游《源能行动》官网） | 只有活动页，无战绩入口 |
 
 结论：**战绩数据只在 App 私有协议后面**，web 侧只暴露「你是谁、你绑了哪个角色」。
+所以扫码登录只解决「身份」，取数还得靠 `bridge/providers/` 那套。
 
 ### 那三条真正可走的路
 
 | 路线 | 能长期取数吗 | 代价 |
 | --- | --- | --- |
-| **A. 抓包掌瓦 App** | 能，直到 token 过期 | 要手动抓一次登录请求，把 token/uid 填给 provider；过期要重抓（或自己实现刷新） |
-| **B. 第三方公开站**（黑盒等，`名称#标签` 直查） | 能，但不稳定 | 数据不全、随时可能关站或加验证；你的插件只是它的转发器 |
-| **C. 官网 web 登录 + 账号接口** | 只能拿到「绑了哪个角色」，拿不到战绩 | 需要攻 QQ web 登录的风控（见下一节），收益还很低 |
+| **A. 扫码登录 + 掌瓦 App 接口** | 能，直到 token 过期 | 本目录这套实现（QQ 要浏览器，微信纯 HTTP） |
+| **B. 抓包掌瓦 App** | 能，直到 token 过期 | 要手动抓一次，把 token/uid 填给 provider；过期要重抓 |
+| **C. 第三方公开站**（黑盒等，`名称#标签` 直查） | 能，但不稳定 | 数据不全、随时可能关站；你只是它的转发器 |
 
-所以本插件的默认姿势仍然是：**网关 + 你自己抓包来的 provider**，
-扫码只是「证明链路通」的调试工具，不是数据来源。
+A 和 B 拿到的凭证形状是一样的（Cookie + scene），可以互相替换。
 
 ## 各平台前置条件
 
-### QQ（`qq.js`）
+### QQ（`qq.js` + `qqpage.js`）
 
-不需要任何配置，开箱能跑。**这不是调试工具，是主用登录方式。**
+**默认走浏览器**（页面式授权），不再自己追 302。
 
 ```
-1  xlogin      → pt_login_sig / idt / jsver          ✅
-2  ptqrshow    → 264×264 二维码 PNG                  ✅
-3  ptqrlogin   → 轮询 ptuiCB：66/67/0/65             ✅
-4  check_sig   → 追跳转到 auth://tauth.qq.com/#…     ✅
-5  login_by_qq → 换掌瓦凭证 { user_id, wt, ct, ctt } ✅
-6  get_main_role_raw → 角色名 + scene                ✅
+1  m_authorize  → openmobile.qq.com/oauth2.0/m_authorize?…&style=qr   ✅
+2  页面出码      → xui.ptlogin2.qq.com 渲染 <img id="qrimg">          ✅ 264×264
+3  扫码/确认      → 页面自己轮询 ptqrlogin                             ✅
+4  授权回调      → 监听 auth://tauth.qq.com/#access_token=…            ✅ 不走 check_sig
+5  graph/me     → access_token 换 openid                              ✅
+6  login_by_qq  → 换掌瓦凭证 { user_id, wt, ct, ctt }                  ✅
+7  get_main_role_raw → 角色名 + scene                                  ✅
 ```
 
-**之前「被风控」是我自己参数不对**，不是腾讯拦得死。第一版按**网页站点**来
-（`daid=383`、`pt_3rd_aid=0`、浏览器 UA），第 3 步稳定回 HTTP 200 + 空 body；
-换成**掌瓦 App 自己**那套就不一样了：
+**为什么必须用浏览器**（这是本次最大的认知修正）：
 
-| 项 | 网页站（❌ 空响应） | 掌瓦 App（✅ 正常） |
-| --- | --- | --- |
-| `daid` | 383 | **381** |
-| `pt_3rd_aid` | 0 | **102061775** |
-| UA | Chrome | **mval/2.4.0…** |
-| 额外头 | — | **`X-Requested-With: com.tencent.apps.valorant`** |
-| 轮询 UA 后缀 | — | **`tencent_game_emulator`** |
+我第一版是纯 HTTP 手工追 `ptqrlogin → check_sig → auth://` 这条链，然后卡死在
+`ptlogin4.openmobile.qq.com` —— 那台机器的 DNS 被指到 `0.0.0.1`：
 
-另外 `ptqrshow` 的 `s` 参数别省：不传只有 **99×99**，手机扫不动；
-`s=8` 才是 264×264。
+```
+ptlogin4.openmobile.qq.com → 0.0.0.1   （阿里 / 腾讯 / Google / 1.1.1.1 结果一致）
+ptlogin4.graph.qq.com      → 0.0.0.1
+ptlogin4.web.qq.com        → 0.0.0.1
+```
 
-⚠️ 两个易失效点，官方换版本时要跟着改（都在 `qq.js` 顶部常量）：
-`sign` / `h5sig`（一次性签名）和 `MVAL_MCODE`（客户端指纹）。
+我当时据此得出「换票前置机下线，扫码做不到」。**错在把这条路当成了唯一的路。**
 
-### 微信（`wechat.js`）
+实际上带 `loginty=7` + `h5sig` 的新流程压根不走 `check_sig`：
+`ptqrlogin` 确认之后，页面会去 `openmobile.qq.com/oauth2.0/m_authlist`
+（这个页面是**活的**，HTTP 200，标题写着「掌上无畏契约将获得以下权限」），
+由它完成授权并吐出 `auth://` 回调。这条路完全在 `openmobile.qq.com` 域内。
 
-必须有一个**已通过审核的微信开放平台「网站应用」**：
+浏览器负责跑完这段页面逻辑，我们只在旁边听三个信号：
+
+| 信号 | 作用 |
+| --- | --- |
+| `page.on('request')` | 拦 `auth://…`（token 在 `#` 后面） |
+| `page.on('framenavigated')` | 同上，导航不一定产生 request 事件 |
+| 轮询 `location.href` | 兜底，防上面两个都没触发 |
+
+另外还留了一层旁路：一旦发现浏览器要去访问那三台黑洞主机，就地 `abort`，
+把同一个 path/query 改投到活着的 `ptlogin4.qq.com` 集群（实测它认同一套参数，
+无效 sigx 会 302 到 www.qq.com）。这层是保险，正常流程用不到。
+
+**浏览器从哪来**（`browser.js`，按优先级）：
+
+1. `PUPPETEER_EXECUTABLE_PATH` / `CHROME_PATH` + `puppeteer-core`
+2. `puppeteer`（自带 Chromium）
+3. 云崽宿主的 `lib/puppeteer/puppeteer.js`（有 `browserInit()`）
+
+三个都没有 → 自动降级到纯 HTTP（`QQ_MODE=http` 可强制指定），
+日志会明确告诉你「可能卡在 check_sig」。
 
 ```bash
-WX_APPID=wx....            # 开放平台 → 网站应用
-WX_SECRET=....             # 换 access_token 用
-WX_REDIRECT=https://your.domain/...   # 授权回调域必须与备案域名一致
+# 指定本机 Chrome（推荐，不用下 100MB 的 Chromium）
+export PUPPETEER_EXECUTABLE_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+npm i puppeteer-core
 ```
 
-没有任何一项时适配器直接返回 `NOT_CONFIGURED`，**不会让用户白扫一张注定失败的码**。
+**UA 很关键**：必须用手机 UA，末尾带 `tencent_game_emulator`
+（腾讯自己的模拟器标识）。桌面 UA 会拿到空白页，出不了码。
 
-注意：`poll` 拿到 `wx_errcode=405` 时只说明「用户确认了」，微信给的还是
-`code`，得拿 `AppSecret` 去换 `access_token` / `openid` —— 这一步放在
-provider 的 `saveLogin()` 里做，因为「换到什么」因数据源而异。
+⚠️ 易失效点：
+- `jsver`：**不要硬编码**。纯 HTTP 版会从 xlogin 页面现抓（2026-10 实测 `3ea7b82c`）。
+  浏览器版不需要它。
+- `MVAL_MCODE`（客户端指纹）、`QQ_APPID`（应为 `102061775`）：官方换版本要跟着改。
+
+**拿不到 token 时的两条近路**：
+
+```bash
+# ① 手里已经有 QQ 互联 access_token（100044/10104 之外的情况）
+node tools/mval-login.mjs qq --openid=<openid> --token=<access_token> --user=<QQ号> --write
+
+# ② 只想体检整条链路，看每一步死在哪
+node tools/probe-login.mjs
+```
+
+### 微信（`wechat.js` + `wxqr.js`）
+
+**零配置，开箱能跑。** 纯 HTTP，不需要浏览器、不需要白名单、不需要 AppSecret。
+
+```
+1  get_sdk_ticket → POST app.mval.qq.com/go/auth/get_sdk_ticket  → ticket   ✅
+2  签名            → sha1("appid=…&noncestr=…&sdk_ticket=…&timestamp=…")    ✅
+3  出码            → GET open.weixin.qq.com/connect/sdk/qrconnect           ✅ 62KB JPEG
+4  轮询            → GET long.open.weixin.qq.com/connect/l/qrconnect        ✅
+                     408 未扫 / 404 已扫 / 405 带 wx_code / 402 过期
+5  login_by_wechat → code 换掌瓦凭证                                        ✅
+6  get_main_role_raw → 角色名 + scene                                       ✅
+```
+
+**为什么之前判断「微信扫码做不了」是错的**：
+
+微信扫码有**两套**完全不同的东西，我原先只看到了错的那套：
+
+| | 网站应用 `qrconnect` | 扫码 SDK `sdk/qrconnect` |
+| --- | --- | --- |
+| redirect_uri | **必须有，且要在开放平台备案** | **没有这个概念** |
+| 门槛 | appid 归属 + 域名备案 | 一串 `sdk_ticket` + sha1 签名 |
+| code 从哪来 | 回调地址（要你自己收） | 轮询接口直接吐给你 |
+| 掌瓦能用吗 | ❌ 回调域是腾讯的 | ✅ |
+
+`sdk_ticket` 本来要用 AppSecret 去换（那是服务端的事），但掌瓦自己开了个
+免鉴权的 `/go/auth/get_sdk_ticket` —— 门槛也没了。这就是手机 App 里
+「用微信扫一扫登录」用的那套，被我们原样复用了。
+
+实测输出（`node tools/test-login.mjs wx`）：
+
+```
+✅ wx 出码成功（709ms）sessionId=… expireIn=180s
+   二维码：data:image/jpeg;base64,/9j/4AAQ…  长度=62071
+   poll#1: status=waiting msg=等待扫码
+```
+
+服务器回显的 `appname` 是「掌上无畏契约」——等于官方替我们确认了 appid 用得对。
+
+⚠️ **appid 必须是 `wxcbb49f1f39656c2a`**。同一个 dex 里还有个
+`wx5a4a8ac0fd48303a`，那是**掌上英雄联盟**的，用错一定 40029
+（微信的 code 按 appid 隔离）。可用 `WX_APPID` 覆盖。
 
 ### 微信网页版（`wxweb.js`）
 
@@ -165,8 +242,9 @@ provider 的 `saveLogin()` 里做，因为「换到什么」因数据源而异�
 
 它能零配置出真码，实测扫码、确认都能走通，但**登录的是微信网页版，
 拿到的是微信自己的会话，跟无畏契约战绩没有半点关系**。
-留着它只是因为 `qq` 适配器卡在轮询那步、走不到 `confirmed`，
-需要一条能跑完整状态机的链路来调 UI。
+早先留着它是因为 `qq` 适配器卡在换票那步、走不到 `confirmed`，
+需要有链路能跑完整状态机来调 UI —— 现在 `wx` 和 `qq` 都能跑到 `confirmed`
+（`qq` 需要浏览器），它的作用只剩「验证通用代码路径」。
 
 真机实测（2026-10）：确认后 `webwxnewloginpage` 返回的是 HTML 而不是 XML，
 拿不到 `skey / pass_ticket` —— 微信对网页版登录的收紧已经不止 `ret=1203` 一种表现。

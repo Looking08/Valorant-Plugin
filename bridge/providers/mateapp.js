@@ -1125,7 +1125,7 @@ export const mateappProvider = {
    * 收下之后立刻用它打一次真实请求做验证，顺便把角色名 / role_id 认出来 ——
    * 不验证就存，用户会在下一次查询时才发现凭证是坏的，排错成本高得多。
    */
-  async saveCredential ({ user, cookie, scene, sceneDetail }) {
+  async saveCredential ({ user, cookie, scene, sceneDetail, source = 'import' }) {
     const key = String(user || '').trim()
     if (!key) throw upstreamError('保存凭证需要 user', 'BAD_REQUEST')
 
@@ -1157,7 +1157,7 @@ export const mateappProvider = {
 
     // 先落盘再做验证：验证要读配置，而读配置需要覆盖层已经存在。
     // 验证失败会把刚写的文件删掉，不会留下半份坏凭证。
-    saveAccount(key, { cookie: cleanCookie, scene: cleanScene, sceneDetail, role })
+    saveAccount(key, { cookie: cleanCookie, scene: cleanScene, sceneDetail, role, source })
 
     try {
       const found = await discoverRole(key)
@@ -1166,7 +1166,8 @@ export const mateappProvider = {
           cookie: cleanCookie,
           scene: cleanScene,
           sceneDetail,
-          role: { ...role, name: found.name || '', roleId: found.roleId || '' }
+          role: { ...role, name: found.name || '', roleId: found.roleId || '' },
+          source
         })
       }
       return {
@@ -1211,7 +1212,7 @@ export const mateappProvider = {
    * 是可以**直接查战绩**的东西：cookie + scene + 角色。
    * 剩下的和「手动导入」完全一样，所以直接复用 saveCredential 的验证逻辑。
    */
-  async saveLogin ({ user, credential }) {
+  async saveLogin ({ user, credential, type }) {
     const key = String(user || '').trim()
     if (!key) {
       return {
@@ -1234,7 +1235,10 @@ export const mateappProvider = {
       user: key,
       cookie: credential.cookie,
       scene: credential.scene,
-      sceneDetail: credential.sceneDetail
+      sceneDetail: credential.sceneDetail,
+      // 记下凭证怎么来的：scan:wx / scan:qq。默认值 'import' 会把扫码来的
+      // 误标成抓包导入，排查时容易看错。
+      source: type ? `scan:${type}` : 'scan'
     })
 
     return { saved: true, user: key, role: saved?.role || credential.role || {} }

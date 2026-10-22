@@ -40,6 +40,33 @@ const XLGOIN = 'https://xui.ptlogin2.qq.com/cgi-bin/xlogin'
 const MVAL_LOGIN = 'https://app.mval.qq.com/go/auth/login_by_qq'
 const MVAL_ROLE = 'https://app.mval.qq.com/go/account/get_main_role_raw'
 
+/**
+ * ⚠️ 腾讯已把「check_sig → auth://」这一跳的主机 DNS 黑洞。
+ *
+ * 2026-10 实测：以下主机在阿里/腾讯/Google 公共 DNS 上一律返回 0.0.0.1，
+ * 也就是说**不是网络问题、换 IP 没用**，是官方下线了这两台前置机：
+ *
+ *   ptlogin4.openmobile.qq.com  → 0.0.0.1   （Move 端 App 登录落地）
+ *   ptlogin4.graph.qq.com       → 0.0.0.1   （网站应用登录落地）
+ *   ptlogin4.web.qq.com         → 0.0.0.1
+ *
+ * 所以 ptqrlogin 返回 code=0（扫码+确认都成功）之后，跟着 302 去换 token 必然断。
+ * 这里保留一份「还活着」的候选主机，扫码成功后**逐个改写落点主机再试**：
+ * 同样的 path / query 换到活主机上，有一部分集群仍然认这套 sigx。
+ * 想自己加候选：QQ_CHECKSIG_HOSTS=host1,host2
+ */
+const CHECKSIG_BLACKHOLE = new Set([
+  'ptlogin4.openmobile.qq.com',
+  'ptlogin4.graph.qq.com',
+  'ptlogin4.web.qq.com'
+])
+
+const CHECKSIG_FALLBACKS = (process.env.QQ_CHECKSIG_HOSTS
+  || 'ptlogin4.qq.com,ptlogin2.qq.com,ssl.ptlogin2.qq.com')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean)
+
 /** 掌瓦客户端指纹，官方换版本时要跟着换 */
 const MCODE = process.env.MVAL_MCODE || '132f0a77d34402abc8463d60100011d19b0e'
 const DEVICE = process.env.MVAL_DEVICE || '23117RK66C'
@@ -177,7 +204,7 @@ function extractToken (raw) {
   return direct
 }
 
-function parseTokenParams (raw) {
+export function parseTokenParams (raw) {
   const out = {}
   let text = unescapeUrl(raw)
   // 解几层编码：外面常套两层
@@ -190,8 +217,11 @@ function parseTokenParams (raw) {
   return { openid: out.openid || '', access_token: out.access_token || '' }
 }
 
-/** 追 check_sig 跳转，直到拿到 auth:// 或 body 里出现 token */
-async function resolveCheckSig (startUrl, referer, jar) {
+/**
+ * 追一段 302 链，直到拿到 auth:// 里的 token，或者链断掉。
+ * 抽出来是为了「同一个 check_sig，换不同主机名多试几次」。
+ */
+async function followHops (startUrl, referer, jar, trace) {
   let url = unescapeUrl(startUrl).trim()
   const seen = new Set()
 
@@ -215,7 +245,9 @@ async function resolveCheckSig (startUrl, referer, jar) {
           ...(jar.header() ? { Cookie: jar.header() } : {})
         }
       })
-    } catch {
+    } catch (error) {
+      // 0.0.0.1 / NXDOMAIN 会在这里炸
+      if (trace) trace.push(`${new URL(url).hostname}: ${error.cause?.code || error.message}`)
       break
     }
     jar.absorb(res.headers.getSetCookie?.())
@@ -236,6 +268,43 @@ async function resolveCheckSig (startUrl, referer, jar) {
       || (body.match(/location\.href\s*=\s*['"]([^'"]+)['"]/i) || [])[1]
     if (next && next !== url) { url = unescapeUrl(next); continue }
     break
+  }
+  return null
+}
+
+/**
+ * 追 check_sig 跳转，直到拿到 auth:// 或 body 里出现 token。
+ *
+ * 2026-10 起 ptlogin4.openmobile / ptlogin4.graph 被 DNS 黑洞（0.0.0.1），
+ * 所以扫码成功后不能只跟官方给的那条 302——把主机名换成还活着的候选再试一轮。
+ * trace 会把每一跳的结果记下来，失败时一起抛给用户，省得「扫码成功但没拿到授权」这种哑巴提示。
+ */
+export async function resolveCheckSig (startUrl, referer, jar, trace = []) {
+  const raw = unescapeUrl(startUrl).trim()
+  if (!raw) return null
+
+  let parsed
+  try { parsed = new URL(raw) } catch { return null }
+
+  const candidates = []
+  if (!CHECKSIG_BLACKHOLE.has(parsed.hostname)) candidates.push(raw)
+  for (const host of CHECKSIG_FALLBACKS) {
+    try {
+      const u = new URL(raw)
+      u.hostname = host
+      candidates.push(u.toString())
+    } catch {}
+  }
+
+  for (const url of [...new Set(candidates)]) {
+    let host = url
+    try { host = new URL(url).hostname } catch {}
+    const token = await followHops(url, referer, jar, trace)
+    if (token?.openid && token?.access_token) {
+      trace.push(`✓ ${host} 拿到 openid/access_token`)
+      return token
+    }
+    trace.push(`✗ ${host} 没拿到 token`)
   }
   return null
 }
@@ -276,7 +345,14 @@ export async function exchangeMval (openid, accessToken) {
   }
   if (!json) throw fail('掌瓦返回的不是 JSON，换凭证失败', 'UPSTREAM')
   if (String(json.result) !== '0') {
-    throw fail(`换掌瓦凭证失败（result=${json.result}）：${json.msg || json.err_msg || '没有说明原因'}`, 'UPSTREAM_AUTH')
+    // 掌瓦把上游错误码塞在 errMsg 文本里（形如 "login by qq fail ret=10104"）。
+    // 10104 = QQ token 校验不过：过期、被顶号、或者不是 appid 102061775 的 token。
+    const detail = String(json.errMsg || json.err_msg || json.msg || '')
+    const ret = (detail.match(/ret=(\d+)/) || [])[1]
+    const explain = ret === '10104'
+      ? 'QQ token 校验不过（10104）：token 过期/被顶号，或不是掌瓦自己 appid（102061775）发的 token'
+      : (json.msg || '没有说明原因')
+    throw fail(`换掌瓦凭证失败（result=${json.result}${ret ? `, ret=${ret}` : ''}）：${explain}`, 'UPSTREAM_AUTH')
   }
 
   const info = json.data?.login_info || {}
@@ -288,7 +364,7 @@ export async function exchangeMval (openid, accessToken) {
  * 按掌瓦的 cookie 形状拼一行。
  * 顺序跟抓包看到的一致，多一个少一个都可能被服务端当异构客户端。
  */
-function buildCookie ({ openid, accessToken, userId, tid }) {
+export function buildCookie ({ openid, accessToken, userId, tid }) {
   return [
     'clientType=9',
     `appid=${THIRD_AID}`,
@@ -342,7 +418,14 @@ function fail (message, code) {
   return error
 }
 
-export const qqAdapter = {
+/**
+ * 纯 HTTP 版适配器（现在的定位是**降级方案**）。
+ *
+ * 它自己出码、自己轮询、自己追 check_sig。前两步都很稳，
+ * 第三步在 2026-10 之后基本走不通了（见文件头 CHECKSIG_BLACKHOLE），
+ * 所以默认路径改成了浏览器版 `qqpage.js`，这里只留作没浏览器时的退路。
+ */
+const httpAdapter = {
   name: 'qq',
 
   async start () {
@@ -369,7 +452,12 @@ export const qqAdapter = {
 
     const loginSig = jar.get('pt_login_sig')
     const idt = jar.get('idt') || String(Math.floor(Date.now() / 1000))
-    const jsver = (page.match(/\/monorepo\/([0-9A-Za-z]+)\/ptlogin\/js\//) || [])[1] || '28d22679'
+    // jsver 是腾讯前端版本号，隔几周就换一次。优先从 xlogin 页面里现抓，
+    // 抓不到才用兜底值（2026-10 实测为 3ea7b82c，旧值 28d22679 已经过期，
+    // 拿旧值轮询会被判「非本客户端」而返回空 body）。
+    const jsver = (page.match(/\/monorepo\/([0-9A-Za-z]+)\/ptlogin\/js\//) || [])[1]
+      || (page.match(/jsver\s*[:=]\s*['"]([0-9a-zA-Z]+)['"]/) || [])[1]
+      || '3ea7b82c'
 
     // 2) 出码。s=8 才是 264×264，不传只有 99×99（太小，手机扫不动）
     const qrUrl = `${PTQR_SHOW}?${new URLSearchParams({
@@ -474,9 +562,23 @@ export const qqAdapter = {
       case '65':
         return { status: 'expired', message: '二维码失效了，重新发 #瓦扫码登录' }
       case '0': {
-        const token = await resolveCheckSig(cb.redirect, state.loginUrl, jar)
+        const trace = []
+        const token = await resolveCheckSig(cb.redirect, state.loginUrl, jar, trace)
         if (!token?.openid || !token?.access_token) {
-          return { status: 'waiting', message: '扫码成功但没拿到 QQ 授权，再试一次' }
+          /**
+           * 走到这儿说明扫码/确认都成功了，死在「换 token」这一跳。
+           * 2026-10 的实测原因是腾讯把 ptlogin4.openmobile / ptlogin4.graph
+           * 的 DNS 指到了 0.0.0.1（见文件头注释），这里把每一跳的结果回给用户，
+           * 别让它看起来像「你没扫」。
+           */
+          return {
+            status: 'blocked',
+            message: '扫码成功，但 QQ 没把授权 token 交出来（官方换票前置机已下线）',
+            hint: `改动落点主机也没换到 token：${trace.join('；') || '无跳转记录'}。`
+              + '这不是参数问题，是腾讯侧的 check_sig 主机（ptlogin4.openmobile.qq.com）'
+              + '被 DNS 黑洞到 0.0.0.1。想继续用请改走抓包导入，或用 tools/mval-login.mjs 手动喂 token。',
+            raw: trace.join(' | ').slice(0, 500)
+          }
         }
 
         const info = await exchangeMval(token.openid, token.access_token)
@@ -525,6 +627,139 @@ export const qqAdapter = {
           raw: text.slice(0, 300),
           message: cb.message || `未知状态 ${cb.code}`
         }
+    }
+  }
+}
+
+/**
+ * 把「浏览器拿到的 token」变成「能查战绩的掌瓦凭证」。
+ * 页面版和 HTTP 版拿到 token 之后走的是同一段，所以抽出来。
+ */
+async function finishLogin ({ openid, accessToken, nickname = '' }) {
+  const info = await exchangeMval(openid, accessToken)
+  const userId = String(info.user_id || '')
+  const cookie = buildCookie({ openid, accessToken, userId, tid: String(info.wt || '') })
+  const role = await fetchRole(cookie).catch(() => null)
+
+  return {
+    status: 'confirmed',
+    message: role?.name ? `登录成功：${role.name}` : '登录成功，但没认出角色名',
+    profile: {
+      nickname,
+      userId,
+      roleName: role?.name || '',
+      tierText: role?.tierText || ''
+    },
+    credential: {
+      cookie,
+      scene: role?.scene || '',
+      sceneDetail: role?.scene || '',
+      role: {
+        uid: role?.uid || '',
+        roleId: role?.roleId || '',
+        name: role?.name || '',
+        zone: role?.gameId || 'codev'
+      },
+      extra: { openid, uin: info.uin || 0, ct: info.ct || '', ctt: info.ctt || '' }
+    }
+  }
+}
+
+/**
+ * 默认适配器：**浏览器优先**，没浏览器就退回纯 HTTP。
+ *
+ * 页面版的状态机不一样 —— 它自己会在后台跑完整条流程，
+ * 所以 `start()` 顺手把后台任务挂上，`poll()` 只是「查一下完事没有」，
+ * 不去阻塞网关的轮询请求。
+ */
+export const qqAdapter = {
+  name: 'qq',
+
+  async start () {
+    if (process.env.QQ_MODE !== 'http') {
+      let session = null
+      // qqpage.js 反过来 import 了本文件的 parseTokenParams / resolveCheckSig，
+      // 所以这里用动态 import 打断静态循环
+      let fetchOpenidFn = null
+      try {
+        const mod = await import('./qqpage.js')
+        fetchOpenidFn = mod.fetchOpenid
+        session = await mod.createQQPageSession({
+          onLog: (msg) => process.env.LOGIN_DEBUG === '1' && console.log('[qq-page]', msg)
+        })
+      } catch (error) {
+        // 只有「压根没浏览器」才降级；出码失败是参数/上游问题，降级也救不了
+        if (error?.code !== 'NO_BROWSER') throw error
+        console.warn('[login] 没有可用浏览器，QQ 降级为纯 HTTP（可能卡在 check_sig）')
+      }
+
+      if (session) {
+        const state = {
+          mode: 'page',
+          session,
+          scanned: false,
+          result: null,
+          error: null,
+          /** 码过期时不用重开浏览器：点一下页面的刷新，拿新 qrsig 继续 */
+          refreshQR: (opts) => session.refreshQR(opts),
+          /** 页面当前文字 —— 排障时最有用的一句话 */
+          pageText: () => session.pageText()
+        }
+
+        // 后台跑：等扫码 → 换 openid → 换掌瓦凭证
+        state.task = (async () => {
+          try {
+            const cb = await session.waitForCallback({
+              onStatus: () => { state.scanned = true }
+            })
+            const openid = await fetchOpenidFn(cb.access_token)
+            if (!openid) throw fail('授权回调里没换到 openid（graph.qq.com 没给）', 'UPSTREAM_AUTH')
+            state.result = await finishLogin({ openid, accessToken: cb.access_token })
+          } catch (error) {
+            state.error = error
+          } finally {
+            await session.close().catch(() => {})
+          }
+        })()
+
+        return {
+          qr: session.qr,
+          state,
+          // 插件/网关可以据此展示「用的是哪种模式」
+          mode: 'page'
+        }
+      }
+    }
+
+    return httpAdapter.start()
+  },
+
+  async poll (state) {
+    if (state?.mode !== 'page') return httpAdapter.poll(state)
+
+    if (state.error) {
+      const code = state.error.code || ''
+      const terminal = ['QR_TIMEOUT', 'CANCELLED', 'UPSTREAM_AUTH', 'UPSTREAM'].includes(code)
+      return {
+        status: terminal ? (code === 'QR_TIMEOUT' ? 'expired' : 'blocked') : 'waiting',
+        message: state.error.message,
+        hint: code === 'UPSTREAM_AUTH'
+          ? 'QQ 那边授权成功了，但掌瓦不认这个 token。通常是 appid 不对（应为 102061775），或该 token 已过期。'
+          : undefined
+      }
+    }
+
+    if (state.result) return state.result
+
+    return state.scanned
+      ? { status: 'scanned', message: '已扫描，请在手机上点「确认登录」' }
+      : { status: 'waiting', message: '等待扫码' }
+  },
+
+  /** 网关取消会话时会调它，把浏览器页面关掉 */
+  async close (state) {
+    if (state?.mode === 'page') {
+      try { await state.session?.close() } catch {}
     }
   }
 }

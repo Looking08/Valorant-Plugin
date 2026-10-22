@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>掌瓦（掌上无畏契约）扫码登录完整方案</title>
+<style>
+:root{
+  --ink:#12141a; --ink-2:#3d4453; --ink-3:#6b7280;
+  --line:#e4e7ec; --bg:#ffffff; --bg-2:#f7f8fa; --bg-3:#f1f3f6;
+  --accent:#c8342b; --accent-soft:#fdf1f0; --accent-2:#1f6feb;
+  --code-bg:#f6f7f9; --ok:#12805c; --warn:#9a6700;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--bg-2); color:var(--ink);
+  font:16px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  font-feature-settings:"kern" 1;
+}
+.page{max-width:860px;margin:0 auto;background:var(--bg);padding:0 0 72px;
+  box-shadow:0 1px 2px rgba(16,24,40,.04),0 12px 40px -12px rgba(16,24,40,.12)}
+header.cover{padding:56px 56px 28px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#fff, #fcfcfd)}
+header.cover .kicker{display:inline-block;font-size:12px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--accent);font-weight:700;margin-bottom:14px}
+header.cover h1{margin:0 0 14px;font-size:34px;line-height:1.3;letter-spacing:-.01em}
+header.cover .meta{color:var(--ink-3);font-size:14px;line-height:1.9}
+header.cover .meta b{color:var(--ink-2);font-weight:600}
+main{padding:8px 56px 0}
+h2{margin:44px 0 14px;font-size:23px;line-height:1.4;padding-bottom:10px;border-bottom:1px solid var(--line);letter-spacing:-.005em}
+h3{margin:30px 0 10px;font-size:17.5px;color:var(--ink)}
+h4{margin:22px 0 8px;font-size:15.5px;color:var(--ink-2)}
+p{margin:12px 0}
+a{color:var(--accent-2);text-decoration:none;border-bottom:1px solid rgba(31,111,235,.25)}
+a:hover{border-bottom-color:var(--accent-2)}
+ul,ol{margin:12px 0;padding-left:24px}
+li{margin:6px 0}
+li>p{margin:6px 0}
+strong{font-weight:600;color:#0b0d12}
+hr{height:1px;border:0;background:var(--line);margin:40px 0}
+
+blockquote{margin:18px 0;padding:14px 18px;background:var(--accent-soft);
+  border-left:3px solid var(--accent);border-radius:0 8px 8px 0;color:#5a2420}
+blockquote p{margin:6px 0}
+blockquote strong{color:#8a2019}
+
+code{font-family:var(--mono);font-size:.875em;background:var(--code-bg);
+  padding:.15em .4em;border-radius:4px;color:#b4322a;border:1px solid #eceef2}
+pre{margin:16px 0;padding:16px 18px;background:#fbfbfc;border:1px solid var(--line);
+  border-radius:10px;overflow-x:auto;font-size:13px;line-height:1.7;
+  white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere}
+pre code{background:none;border:0;padding:0;color:#242a35;font-size:inherit}
+
+table{width:100%;border-collapse:separate;border-spacing:0;margin:18px 0;font-size:14px;
+  border:1px solid var(--line);border-radius:10px;overflow:hidden}
+thead th{background:var(--bg-3);font-weight:600;text-align:left;color:var(--ink-2);
+  font-size:13px;letter-spacing:.02em}
+th,td{padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:nth-child(even){background:#fcfcfd}
+td code{white-space:nowrap}
+
+.tag-ok{color:var(--ok);font-weight:600}
+.tag-warn{color:var(--warn);font-weight:600}
+
+footer{max-width:860px;margin:0 auto;padding:22px 56px 0;color:var(--ink-3);font-size:12.5px}
+
+@media print{
+  body{background:#fff}
+  .page{box-shadow:none;max-width:none;padding:0}
+  header.cover{padding:0 0 20px}
+  main{padding:0}
+  h2{page-break-after:avoid}
+  pre,table,blockquote{page-break-inside:avoid}
+}
+@media (max-width:720px){
+  header.cover,main,footer{padding-left:20px;padding-right:20px}
+  header.cover h1{font-size:26px}
+  table{font-size:13px}
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="cover">
+    <span class="kicker">逆向与实现报告</span>
+    <h1>掌瓦（掌上无畏契约）扫码登录完整方案</h1>
+    <div class="meta">
+      <b>项目</b> Valorant-Plugin（TRSS-Yunzai / Yunzai V3）<br>
+      <b>逆向目标</b> 掌上无畏契约 2.9.0 · com.tencent.apps.valorant<br>
+      <b>验证状态</b> 微信 / QQ 两条链路均已真机扫码并取到战绩数据
+    </div>
+  </header>
+  <main>
+<h2>0. 一句话结论</h2>
+<p><strong>扫码登录能做，而且两条路都能做：微信零配置、纯 HTTP；QQ 需要一台浏览器。</strong>
+拿到的凭证与抓包导入完全等价（cookie + scene），可以直接查战绩。</p>
+<p>本文记录的是完整的推导过程、接口契约、踩过的坑和验证数据，不是&quot;据说可以&quot;。</p>
+<hr>
+<h2>1. 能力边界</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>状态</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>微信扫码登录</td>
+<td>✅ 已验证</td>
+<td>纯 HTTP，无需 appid / secret / 域名</td>
+</tr>
+<tr>
+<td>QQ 扫码登录</td>
+<td>✅ 已验证</td>
+<td>需要 Chrome/Chromium，出码约 10 秒</td>
+</tr>
+<tr>
+<td>换取掌瓦凭证</td>
+<td>✅ 已验证</td>
+<td><code>login_by_qq</code> / <code>login_by_wechat</code> 都由掌瓦服务端完成 code→openid</td>
+</tr>
+<tr>
+<td>查战绩</td>
+<td>✅ 已验证</td>
+<td>扫码凭证直接可用，与抓包导入同一套</td>
+</tr>
+<tr>
+<td>凭证有效期</td>
+<td>⚠️ 3 天</td>
+<td>底层 web ticket 硬过期，到期需重扫或重抓</td>
+</tr>
+<tr>
+<td>跨账号查询</td>
+<td>❌ 不支持</td>
+<td>掌瓦没有按昵称搜人的接口，只能查自己 / 同过场的人</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>2. 逆向对象与方法</h2>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>文件</td>
+<td><code>掌上无畏契约_2.9.0.APK</code>（111 MB）</td>
+</tr>
+<tr>
+<td>包名</td>
+<td><code>com.tencent.apps.valorant</code></td>
+</tr>
+<tr>
+<td>架构</td>
+<td>原生 Kotlin + React Native（<code>libhermes</code> / <code>libfabricjni</code>）+ 腾讯 QTL（掌盟）框架</td>
+</tr>
+<tr>
+<td>DEX</td>
+<td>17 个，约 5.75 万个类 / 37 万个方法</td>
+</tr>
+<tr>
+<td>工具</td>
+<td>jadx 1.5.6（单类反编译）+ 自写 DEX 解析器（<code>reapk/dexscan.py</code>，做字符串与交叉引用定向提取）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>方法上的两个关键点</strong>：</p>
+<ol>
+<li><strong>不要全量反编译</strong>。5.75 万个类跑 jadx 要半小时以上，且大部分是广告/容器代码。
+正确做法是先扫字符串池定位特征串，再用 DEX 交叉引用找到引用它的类，最后只反编译那几个类。</li>
+<li><strong>Gson 默认用字段名当 JSON key</strong>。所以只要从 DEX 里读到 <code>LoginByWXProtocol$Params</code>
+的字段声明，就等于拿到了服务端的完整请求契约，不需要抓包也能写对请求体。</li>
+</ol>
+<hr>
+<h2>3. 登录架构全景</h2>
+<pre><code>        ┌──────────────┐          ┌──────────────┐
+        │  QQ 客户端    │          │  微信客户端   │
+        └──────┬───────┘          └──────┬───────┘
+               │ mqqapi SSO              │ SendAuth / 扫码 SDK
+               ▼                         ▼
+        ┌────────────────────────────────────────────┐
+        │ com.tencent.wglogin.sso.openqq / wechat     │
+        │  只负责拿到「票」：access_token / auth code   │
+        └───────────────────┬────────────────────────┘
+                            ▼  SsoLicense{userId, accessTicket}
+        ┌────────────────────────────────────────────┐
+        │ com.tencent.wglogin.authsuite（ZMLogin）     │
+        │   loginByQC() → LoginByQQProtocol           │
+        │   loginByWX() → LoginByWXProtocol           │
+        └───────────────────┬────────────────────────┘
+                            ▼  POST app.mval.qq.com
+        ┌────────────────────────────────────────────┐
+        │ /go/auth/login_by_qq      /go/auth/get_sdk_ticket
+        │ /go/auth/login_by_wechat                    │
+        └───────────────────┬────────────────────────┘
+                            ▼  { user_id, wt, ct, ctt, uin }
+        ┌────────────────────────────────────────────┐
+        │ /go/account/get_main_role_raw               │
+        │   → 角色名 / role_id / scene                │
+        └───────────────────┬────────────────────────┘
+                            ▼  cookie + scene
+        ┌────────────────────────────────────────────┐
+        │ /go/codev/career/*   战绩、详情、枪械        │
+        └────────────────────────────────────────────┘
+</code></pre>
+<p><strong>整件事能成立的前提，也是最容易看漏的一点</strong>：</p>
+<p><code>login_by_qq</code> / <code>login_by_wechat</code> 的请求体里<strong>没有 secret</strong>。
+code→openid 的交换是<strong>掌瓦服务端</strong>用它自己的 AppSecret 做的。
+所以我们不需要腾讯的密钥，只需要「一张票」——这正是扫码能替代抓包的原因。</p>
+<hr>
+<h2>4. 微信扫码：走的是「扫码 SDK」，不是「网站应用」</h2>
+<h3>4.1 两套微信扫码，别搞混</h3>
+<p>这是本方案最早踩的坑，也是我一度错误判断&quot;微信做不到&quot;的原因：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>网站应用 <code>connect/qrconnect</code></th>
+<th>扫码 SDK <code>connect/sdk/qrconnect</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>redirect_uri</td>
+<td><strong>必须有，且要在开放平台备案</strong></td>
+<td><strong>没有这个概念</strong></td>
+</tr>
+<tr>
+<td>门槛</td>
+<td>appid 归属 + 域名备案</td>
+<td>一串 <code>sdk_ticket</code> + sha1 签名</td>
+</tr>
+<tr>
+<td>code 从哪来</td>
+<td>回调到你的服务器</td>
+<td>长轮询接口直接吐给你</td>
+</tr>
+<tr>
+<td>掌瓦能用吗</td>
+<td>❌ 回调域是腾讯的</td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<p>手机 App 里那个「用微信扫一扫登录」用的就是后者。掌瓦复用它，我们原样复用掌瓦。</p>
+<h3>4.2 逆向来源</h3>
+<p><code>classes8.dex</code> → <code>com.tencent.wglogin.authsuite.c</code>，方法 <code>a(Activity, a)</code>（内部叫 <code>loginWXByQRCode</code>）：</p>
+<pre><code class="language-java">new GetWXServerTicketProtocol().post(activity, … {
+    public void onSuccess(GetWXServerTicketResult r, boolean z) {
+        String appid     = com.tencent.wglogin.authsuite.util.a.b;  // 运行时注入
+        String noncestr  = e.a(6);
+        String timestamp = (System.currentTimeMillis() / 1000) + &quot;&quot;;
+        String origin = &quot;appid=&quot; + appid + &quot;&amp;noncestr=&quot; + noncestr
+                      + &quot;&amp;sdk_ticket=&quot; + r.ticket + &quot;&amp;timestamp=&quot; + timestamp;
+        String sign = f.a(origin);                                  // sha1 hex
+        DiffDevOAuthFactory.getDiffDevOAuth()
+            .auth(appid, &quot;snsapi_userinfo&quot;, noncestr, timestamp, sign, listener);
+    }
+});
+</code></pre>
+<p><code>DiffDevOAuth</code> 是微信官方 <code>libammsdk</code> 里的类，它内部做的事正好对应 DEX 里那两条 URL：</p>
+<pre><code>https://open.weixin.qq.com/connect/sdk/qrconnect?appid=%s&amp;noncestr=%s&amp;timestamp=%s&amp;scope=%s&amp;signature=%s
+https://long.open.weixin.qq.com/connect/l/qrconnect?f=json&amp;uuid=%s
+</code></pre>
+<h3>4.3 取票（这一步是整个方案的关键）</h3>
+<pre><code>POST https://app.mval.qq.com/go/auth/get_sdk_ticket?source_game_zone=agame&amp;game_zone=agame
+Content-Type: application/json
+Cookie: clientType=9; openid=null; access_token=null
+
+{&quot;clienttype&quot;:9,&quot;config_params&quot;:{&quot;client_dev_name&quot;:&quot;23117RK66C&quot;,&quot;lang_type&quot;:0}}
+</code></pre>
+<p><strong>免鉴权</strong>，直接返回：</p>
+<pre><code class="language-json">{&quot;data&quot;:{&quot;ticket&quot;:&quot;qeuRRdzufZaOpdhfU2Q4gGbgoxq-NLbBLoPmh9nUqycSJTMoFHaQ4dN1XcR9TaOt…&quot;},&quot;result&quot;:0}
+</code></pre>
+<p>注意：必须是 <strong>POST + JSON body</strong>，GET 会返回 <code>404 page not found</code>。</p>
+<h3>4.4 签名</h3>
+<pre><code>signature = sha1(&quot;appid={appid}&amp;noncestr={noncestr}&amp;sdk_ticket={ticket}&amp;timestamp={timestamp}&quot;)
+</code></pre>
+<p><strong>参数顺序不能变</strong>，这是微信的规则。<code>noncestr</code> 是随机串（App 里是 6 位，我们用 16 位 hex 也可以）。</p>
+<h3>4.5 出码</h3>
+<pre><code>GET https://open.weixin.qq.com/connect/sdk/qrconnect
+    ?appid=wxcbb49f1f39656c2a
+    &amp;noncestr={noncestr}
+    &amp;timestamp={timestamp}
+    &amp;scope=snsapi_userinfo
+    &amp;signature={signature}
+</code></pre>
+<p>成功返回（实测 68 700 字节）：</p>
+<pre><code class="language-json">{
+  &quot;errcode&quot;: 0,
+  &quot;uuid&quot;: &quot;061lJR7z2qTgnl2d&quot;,
+  &quot;appname&quot;: &quot;掌上无畏契约&quot;,
+  &quot;qrcode&quot;: { &quot;qrcodebase64&quot;: &quot;/9j/4AAQSkZJRgABAQ…&quot; }
+}
+</code></pre>
+<p><code>appname</code> 回显「掌上无畏契约」——这是<strong>服务端替我们确认了 appid 归属正确</strong>，比任何静态分析都硬。
+图片是 <strong>JPEG</strong>（<code>/9j/</code> 开头，472×472），不是 PNG。</p>
+<p>失败时 <code>errcode=40001</code> 表示签名不对或 ticket 过期。</p>
+<h3>4.6 轮询状态</h3>
+<pre><code>GET https://long.open.weixin.qq.com/connect/l/qrconnect?f=json&amp;uuid={uuid}
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>wx_errcode</th>
+<th>含义</th>
+<th>处理</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>408</td>
+<td>未扫码</td>
+<td>继续等</td>
+</tr>
+<tr>
+<td>404</td>
+<td>已扫，等待手机确认</td>
+<td>提示用户点确认</td>
+</tr>
+<tr>
+<td><strong>405</strong></td>
+<td>已确认，<strong>带 <code>wx_code</code></strong></td>
+<td>拿 code 去换票</td>
+</tr>
+<tr>
+<td>402</td>
+<td>二维码过期</td>
+<td>重新出码</td>
+</tr>
+<tr>
+<td>403</td>
+<td>用户取消</td>
+<td>结束</td>
+</tr>
+</tbody>
+</table>
+<p>⚠️ 只有 <strong>405</strong> 才带 code。404 只是&quot;扫了但没点确认&quot;，此时去换票必然失败。</p>
+<h3>4.7 换掌瓦凭证</h3>
+<pre><code class="language-json">POST https://app.mval.qq.com/go/auth/login_by_wechat?source_game_zone=agame&amp;game_zone=agame
+Cookie: clientType=9; openid=null; access_token=null
+
+{
+  &quot;clienttype&quot;: 9,
+  &quot;config_params&quot;: { &quot;client_dev_name&quot;: &quot;23117RK66C&quot;, &quot;lang_type&quot;: 0 },
+  &quot;login_info&quot;: {
+    &quot;appid&quot;: &quot;wxcbb49f1f39656c2a&quot;,
+    &quot;code&quot;: &quot;&lt;405 给的 wx_code&gt;&quot;,
+    &quot;wx_info_type&quot;: 1,
+    &quot;check_third_type&quot;: 1
+  },
+  &quot;mappid&quot;: 10200,
+  &quot;mcode&quot;: &quot;132f0a77d34402abc8463d60100011d19b0e&quot;
+}
+</code></pre>
+<p>字段名来自 <code>LoginByWXProtocol$Params</code>（Gson 字段名 = JSON key）。
+<code>check_third_type</code> 在 <code>wglogin.d#a(SsoLicense, f)</code> 里写死为 <strong>1</strong>。</p>
+<p><strong>错误码</strong>：喂假 code 会返回 <code>40029</code>（微信标准的 invalid code），
+这正好证明「交换发生在掌瓦服务端」，也证明我们的请求体格式完全正确。</p>
+<h3>4.8 实测记录</h3>
+<pre><code>[1] ticket: {&quot;data&quot;:{&quot;ticket&quot;:&quot;qeuRRdzufZaOpdhfU2Q4gGbgoxq-…&quot;},&quot;result&quot;:0}
+[2] raw:    appid=wxcbb49f1f39656c2a&amp;noncestr=11ce2b4a6121d8da&amp;sdk_ticket=…&amp;timestamp=…
+[3] HTTP 200 len 68700 → errcode=0, uuid=061lJR7z2qTgnl2d, appname=掌上无畏契约
+[4] poll → {&quot;wx_errcode&quot;:408, &quot;wx_code&quot;:&quot;&quot;}
+</code></pre>
+<p>出码耗时 <strong>709 ～ 872 ms</strong>。</p>
+<hr>
+<h2>5. QQ 扫码：页面式授权，绕开被黑洞的那一跳</h2>
+<h3>5.1 我最初错在哪</h3>
+<p>第一版是纯 HTTP 手工追 <code>ptqrlogin → check_sig → auth://</code>，卡在 <code>check_sig</code> 上。
+那台机器的 DNS 确实被指到 <code>0.0.0.1</code>，四个公共 DNS 结果一致：</p>
+<pre><code>$ dig +short ptlogin4.openmobile.qq.com @223.5.5.5    → 0.0.0.1
+$ dig +short ptlogin4.graph.qq.com      @119.29.29.29 → 0.0.0.1
+$ dig +short ptlogin4.web.qq.com        @1.1.1.1      → 0.0.0.1
+$ curl https://ptlogin4.openmobile.qq.com/            → 000（连不上）
+</code></pre>
+<p>我据此得出「换票前置机已下线，扫码做不到」——<strong>错在把这条路当成了唯一的路。</strong></p>
+<h3>5.2 真正的落地页是 <code>m_authlist</code></h3>
+<p><code>m_authorize</code> 返回的不是二维码，而是一个跳转页，里面带着<strong>服务端下发的 <code>h5sig</code></strong>：</p>
+<pre><code class="language-js">var src = &quot;https://xui.ptlogin2.qq.com/cgi-bin/xlogin?appid=716027609
+          &amp;pt_3rd_aid=102061775&amp;daid=381&amp;…&amp;h5sig=MfBler9YgYCaIkB91wdEHEiRvJzgTqz6JTw7_14YvYM&amp;loginty=7&quot;;
+location.replace(src);
+</code></pre>
+<p><code>loginty=7</code> + <code>h5sig</code> 走的是 openapi 版授权。扫码确认后，页面去的是：</p>
+<pre><code>GET https://openmobile.qq.com/oauth2.0/m_authlist?…&amp;loginty=7
+→ HTTP 200，4246 字节
+→ &lt;p id=&quot;auth_tips&quot;&gt;掌上无畏契约将获得以下权限:&lt;/p&gt;
+</code></pre>
+<p><strong>这台是活的。</strong> 授权在 <code>openmobile.qq.com</code> 域内完成，
+<code>check_sig</code> 是旧流程（<code>loginty=6</code>）的落点。走错了分支，才会撞上那三台死机器。</p>
+<h3>5.3 方案：让浏览器跑，我们只听</h3>
+<pre><code>1  GET  openmobile.qq.com/oauth2.0/m_authorize?client_id=102061775
+        &amp;scope=all&amp;redirect_uri=auth://tauth.qq.com/&amp;response_type=token&amp;style=qr
+2  页面 JS 自动跳转 → xui.ptlogin2.qq.com 渲染二维码
+3  用户扫码 + 手机确认
+4  页面内完成授权 → 跳 auth://tauth.qq.com/#access_token=…&amp;pay_token=…
+5  拦截这个回调，取 access_token
+6  GET  graph.qq.com/oauth2.0/me?access_token=…&amp;fmt=json  → openid
+7  POST login_by_qq → 掌瓦凭证
+</code></pre>
+<p><strong>三处信号同时监听</strong>（哪个先响算哪个，缺一不可）：</p>
+<table>
+<thead>
+<tr>
+<th>信号</th>
+<th>命中场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>page.on('request')</code></td>
+<td><code>auth://</code> 协议导航</td>
+</tr>
+<tr>
+<td><code>page.on('framenavigated')</code></td>
+<td>导航不一定产生 request 事件</td>
+</tr>
+<tr>
+<td>轮询 <code>location.href</code></td>
+<td>兜底，防上面两个都没触发</td>
+</tr>
+</tbody>
+</table>
+<p><strong>保险丝</strong>：一旦发现浏览器要去访问那三台黑洞主机，就地 <code>abort</code>，
+把同一个 path/query 改投到活着的 <code>ptlogin4.qq.com</code> 集群
+（实测：无效 sigx 会 302 到 <code>www.qq.com</code>，说明它认这套参数）。</p>
+<h3>5.4 出码细节（踩过的坑）</h3>
+<p>页面上的真码是：</p>
+<pre><code class="language-html">&lt;img id=&quot;qrimg&quot; src=&quot;https://xui.ptlogin2.qq.com/ssl/ptqrshow?s=8&amp;e=0&amp;appid=716027609&amp;…&quot;&gt;
+</code></pre>
+<p>但页面上还有一个<strong>空的</strong> <code>&lt;img id=&quot;imgVerify&quot;&gt;</code>。
+第一版按 <code>img</code> 标签取第一张，抓到了那个空元素，截出一张 549 字节的空白图。</p>
+<p>正确做法：选择器写 <code>#qrimg</code>，并且<strong>回源取原图</strong>——
+拿页面当前 cookie 去请求那个 <code>ptqrshow</code> 地址，得到 264×264 原始 PNG，
+比截屏清晰、也不受页面缩放影响（同一个 <code>qrsig</code> 反复请求是幂等的，拿到的是同一张码）。</p>
+<h3>5.5 回调里没有 openid</h3>
+<p><code>response_type=token</code> 的回调只有 <code>access_token</code> / <code>pay_token</code>，<strong>没有 openid</strong>。
+要另外用标准接口换：</p>
+<pre><code>GET https://graph.qq.com/oauth2.0/me?access_token=…&amp;fmt=json
+→ {&quot;openid&quot;:&quot;…&quot;,&quot;client_id&quot;:&quot;…&quot;}
+</code></pre>
+<p>老版本会返回 JSONP <code>callback( {&quot;openid&quot;:&quot;…&quot;} );</code>，需要兼容。</p>
+<h3>5.6 实测记录</h3>
+<pre><code>[qq-page] 打开授权页：…/m_authorize?client_id=***&amp;…&amp;style=qr
+✅ qq 出码成功（8898ms）  二维码 264×264 PNG
+   poll#1: status=waiting msg=等待扫码
+</code></pre>
+<p>出码耗时 <strong>8.9 ～ 9.9 秒</strong>（要起浏览器 + 等页面 JS 加载）。</p>
+<blockquote>
+<p><strong>UA 很关键</strong>：必须用手机 UA，末尾带 <code>tencent_game_emulator</code>（腾讯自己的模拟器标识）。
+桌面 UA 会拿到空白页，出不了码。
+另外浏览器要把 <code>navigator.webdriver</code> 抹掉。</p>
+</blockquote>
+<hr>
+<h2>6. 关键参数速查</h2>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>值</th>
+<th>来源</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>包名</td>
+<td><code>com.tencent.apps.valorant</code></td>
+<td>APK</td>
+</tr>
+<tr>
+<td>QQ 互联 appid</td>
+<td><code>102061775</code></td>
+<td><code>ShareInitTask</code>（<code>c.g()</code> 分支）</td>
+</tr>
+<tr>
+<td>微信 appid（掌瓦）</td>
+<td><code>wxcbb49f1f39656c2a</code></td>
+<td><code>ShareInitTask</code></td>
+</tr>
+<tr>
+<td>微信 appid（掌盟）</td>
+<td><code>wx5a4a8ac0fd48303a</code></td>
+<td>⚠️ 不是这个，用错必 40029</td>
+</tr>
+<tr>
+<td><code>mappid</code></td>
+<td><code>10200</code></td>
+<td><code>LoginByWXProtocol$Params</code> 默认</td>
+</tr>
+<tr>
+<td><code>mcode</code></td>
+<td><code>132f0a77d34402abc8463d60100011d19b0e</code></td>
+<td>客户端指纹，随版本变</td>
+</tr>
+<tr>
+<td><code>clienttype</code></td>
+<td><code>9</code></td>
+<td>Android 客户端</td>
+</tr>
+<tr>
+<td><code>pt_3rd_aid</code> / <code>daid</code></td>
+<td><code>102061775</code> / <code>381</code></td>
+<td>QQ 登录页参数</td>
+</tr>
+<tr>
+<td><code>scope</code>（微信）</td>
+<td><code>snsapi_userinfo</code></td>
+<td><code>auth(...)</code> 写死</td>
+</tr>
+<tr>
+<td><code>check_third_type</code></td>
+<td><code>1</code></td>
+<td><code>loginByWX</code> 写死</td>
+</tr>
+<tr>
+<td><code>device</code></td>
+<td><code>23117RK66C</code></td>
+<td>小米机型，UA 与 <code>client_dev_name</code> 要一致</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>7. 工程实现</h2>
+<h3>7.1 模块结构</h3>
+<pre><code>bridge/login/
+├── index.js      适配器注册表（qq / wx，可选 wxweb / mock）
+├── session.js    会话状态机 + 资源释放（release）
+├── qq.js         QQ 适配器：浏览器优先，纯 HTTP 兜底
+├── qqpage.js     └─ 页面式授权（真浏览器跑 m_authorize）
+├── browser.js    └─ 浏览器获取（puppeteer-core / puppeteer / 云崽宿主）
+├── wechat.js     微信适配器：扫码 SDK，纯 HTTP
+├── wxqr.js       └─ sdk_ticket → 签名 → 出码 → 轮询
+├── exchange.js   code / token → 掌瓦凭证（login_by_qq / login_by_wechat）
+└── mock.js       假登录（仅 LOGIN_MOCK=1）
+</code></pre>
+<p><strong>分层约定</strong>：插件只管交互（出图、轮询、提示），网关持有会话，
+provider 负责 <code>saveLogin()</code>。加一个新平台 = 加一个 adap ter + 注册一行，插件不用改。</p>
+<h3>7.2 状态机</h3>
+<pre><code>waiting ──扫码──&gt; scanned ──确认──&gt; confirmed ──commit──&gt; 落库
+   │                  │
+   ├──超时──────────&gt; expired
+   ├──上游不认参数──&gt; blocked
+   └──用户取消──────&gt; cancelled
+</code></pre>
+<p><code>blocked</code> 是刻意设计的状态，不是异常补丁：上游不认这套请求时，
+让用户干等到超时是最差的选择，连续 5 次空响应就承认失败并给出下一步建议。</p>
+<h3>7.3 凭证落库与多人隔离</h3>
+<pre><code>bridge/mate.json              基础配置（接口路径、武器表）—— 部署者一份
+bridge/accounts/&lt;user&gt;.json   每个人的 cookie + scene —— 一人一份
+</code></pre>
+<p><code>saveCredential()</code> 会<strong>先落盘再验证</strong>：立刻拿这份 cookie 打一次真实请求，
+认出角色名与 <code>role_id</code>；验证失败则删掉刚写的文件，不留半份坏凭证。</p>
+<p>这条&quot;绝不偷偷用 base 凭证&quot;的规则很重要——否则每个群友都会看到机器人主人的战绩。</p>
+<h3>7.4 配置项</h3>
+<table>
+<thead>
+<tr>
+<th>环境变量</th>
+<th>作用</th>
+<th>默认</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>QQ_MODE=http</code></td>
+<td>强制 QQ 走纯 HTTP（排障对比用）</td>
+<td>浏览器优先</td>
+</tr>
+<tr>
+<td><code>PUPPETEER_EXECUTABLE_PATH</code></td>
+<td>指定 Chrome 路径</td>
+<td>自动探测</td>
+</tr>
+<tr>
+<td><code>LOGIN_TTL</code></td>
+<td>本地会话计时（秒）</td>
+<td>180</td>
+</tr>
+<tr>
+<td><code>QQ_APPID</code> / <code>WX_APPID</code></td>
+<td>覆盖 appid</td>
+<td>见速查表</td>
+</tr>
+<tr>
+<td><code>MVAL_MCODE</code> / <code>MVAL_DEVICE</code></td>
+<td>客户端指纹</td>
+<td>APK 实测值</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>8. 端到端验证记录</h2>
+<h3>8.1 全链路</h3>
+<pre><code>STATUS waiting    :: 等待扫码
+STATUS scanned    :: 已扫描，请在手机上点「确认登录」
+STATUS confirmed  :: 登录成功：苦橘甘来
+SAVED {&quot;saved&quot;:true,&quot;role&quot;:{&quot;uid&quot;:&quot;JA-10621b7…&quot;,&quot;name&quot;:&quot;苦橘甘来&quot;,&quot;roleId&quot;:&quot;1383005380427&quot;}}
+</code></pre>
+<p>扫码 → 确认 → 换票 → 认角色，<strong>32 秒</strong>完成。</p>
+<h3>8.2 落库结果</h3>
+<p><code>bridge/accounts/demo.json</code>：</p>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>cookie</td>
+<td>8 段（clientType / appid / acctype / openid / access_token / userId / accountType / tid）</td>
+</tr>
+<tr>
+<td>scene</td>
+<td>175 字符（v3_ 开头）</td>
+</tr>
+<tr>
+<td>role</td>
+<td>uid + name + roleId</td>
+</tr>
+</tbody>
+</table>
+<h3>8.3 用这份凭证查到的真实数据</h3>
+<table>
+<thead>
+<tr>
+<th>地图</th>
+<th>模式</th>
+<th>特工</th>
+<th>K/D/A</th>
+<th>ACS</th>
+<th>比分</th>
+<th>结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>天枢云阙</td>
+<td>竞技模式</td>
+<td>炼狱</td>
+<td>12/16/9</td>
+<td>221</td>
+<td>10-10</td>
+<td>平</td>
+</tr>
+<tr>
+<td>源工重镇</td>
+<td>竞技模式</td>
+<td>炼狱</td>
+<td>9/8/4</td>
+<td>304</td>
+<td>8-2</td>
+<td>胜</td>
+</tr>
+<tr>
+<td>亚海悬城</td>
+<td>竞技模式</td>
+<td>芮娜</td>
+<td>12/12/5</td>
+<td>296</td>
+<td>6-8</td>
+<td>负</td>
+</tr>
+</tbody>
+</table>
+<p>汇总：1 胜 1 负，胜率 50%，平均 ACS 274，K/D 1.45。</p>
+<p><strong>这一步的意义</strong>大于&quot;登录成功&quot;：它同时证明了三件事——
+code 是真能用的（不是空壳）、掌瓦服务端完成了交换、凭证是完整可用的（不只是登录态）。</p>
+<h3>8.4 换环境复验：Docker 里的 TRSS-Yunzai</h3>
+<p>同一份代码搬到容器里（<code>TRSS_AllBot</code>，Arch Linux，Node 26，Chromium 154）重新跑了一遍，
+结论是<strong>逻辑零改动、只需要补环境</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>环节</th>
+<th>结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>加载登录模块</td>
+<td><code>adapters: qq/wx</code></td>
+</tr>
+<tr>
+<td>微信出码（直连适配器）</td>
+<td><strong>937 ms</strong></td>
+</tr>
+<tr>
+<td>微信出码（走网关 HTTP）</td>
+<td><strong>1.0–2.8 s</strong></td>
+</tr>
+<tr>
+<td>扫码 → 确认</td>
+<td><strong>3 s</strong>（<code>23:24:13</code> → <code>23:24:16</code>）</td>
+</tr>
+<tr>
+<td>落库</td>
+<td><code>saved:true</code>，8 段 cookie + 175 字符 scene，<code>source: scan:wx</code></td>
+</tr>
+<tr>
+<td>用新凭证查战绩</td>
+<td>3 场：天枢云阙 12-16-9 / 源工重镇 9-8-4 / 亚海悬城 12-12-5，汇总 1 胜 1 负、ACS 274、K/D 1.45</td>
+</tr>
+<tr>
+<td>QQ 出码（要浏览器）</td>
+<td><strong>7258 ms</strong>，398×398 真二维码</td>
+</tr>
+</tbody>
+</table>
+<p>容器里额外踩到、本地完全不会遇到的问题（缺 CJK 字体导致出图豆腐块、<code>/dev/shm</code> 只有 64MB、
+网关不重启就一直跑老适配器）单独整理成了
+<a href="Docker%E4%BA%91%E5%B4%BD%E9%83%A8%E7%BD%B2%E4%B8%8E%E6%89%AB%E7%A0%81%E7%99%BB%E5%BD%95.md"><code>Docker云崽部署与扫码登录.md</code></a>。</p>
+<hr>
+<h2>9. 失效点与维护手册</h2>
+<p>按&quot;多久会坏&quot;排序：</p>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>风险</th>
+<th>坏了怎么办</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>jsver</code></td>
+<td>腾讯每几周换一次</td>
+<td>QQ 纯 HTTP 版从 xlogin 页面现抓；浏览器版不需要</td>
+</tr>
+<tr>
+<td><code>mcode</code> / <code>device</code></td>
+<td>随客户端版本变</td>
+<td>重新从 APK 提，或抓包看 UA</td>
+</tr>
+<tr>
+<td><code>signature</code> / <code>h5sig</code></td>
+<td>一次性签名</td>
+<td>浏览器版由页面自己生成；微信版每次现算</td>
+</tr>
+<tr>
+<td><code>sdk_ticket</code></td>
+<td>有有效期（分钟级）</td>
+<td>每次出码都重新取一次，不要缓存</td>
+</tr>
+<tr>
+<td><code>scene</code></td>
+<td>会话级 blob，与&quot;哪一页&quot;绑定</td>
+<td>列表/概览用一个（175 字符），单局详情用另一个（91 字符）</td>
+</tr>
+<tr>
+<td>凭证</td>
+<td>硬 3 天过期</td>
+<td>重扫一次（微信 30 秒），或重新抓包</td>
+</tr>
+</tbody>
+</table>
+<p><strong>排障入口</strong>：</p>
+<pre><code class="language-bash">node tools/test-login.mjs wx                 # 微信：出码 + 状态机
+node tools/test-login.mjs wx --save --query  # 微信：落库 + 查最近 3 场
+node tools/test-login.mjs qq                 # QQ：约 10 秒出码
+node tools/test-login.mjs qq --http          # 强制纯 HTTP，对比排障
+node bridge/providers/mateapp-cli.mjs        # 打印战绩接口原始 JSON
+</code></pre>
+<hr>
+<h2>10. 踩坑清单（按踩的顺序）</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>现象</th>
+<th>真因</th>
+<th>修法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>ptqrlogin</code> 稳定返回 200 + 空 body</td>
+<td>用了网页站的参数（<code>daid=383</code>、<code>pt_3rd_aid=0</code>、浏览器 UA）</td>
+<td>换成掌瓦 App 那套：<code>daid=381</code>、<code>pt_3rd_aid=102061775</code>、<code>mval</code> UA + <code>X-Requested-With</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td>二维码扫不动</td>
+<td><code>ptqrshow</code> 不传 <code>s</code> 只有 99×99</td>
+<td><code>s=8</code> → 264×264</td>
+</tr>
+<tr>
+<td>3</td>
+<td>轮询被判&quot;非本客户端&quot;</td>
+<td><code>jsver</code> 硬编码且已过期</td>
+<td>从 xlogin 页面现抓</td>
+</tr>
+<tr>
+<td>4</td>
+<td>扫码成功但拿不到 token</td>
+<td>跟了 <code>check_sig</code>（死主机），而新流程走 <code>m_authlist</code></td>
+<td>改用浏览器跑页面，只监听回调</td>
+</tr>
+<tr>
+<td>5</td>
+<td>二维码是 549 字节空白</td>
+<td>选中了空的 <code>#imgVerify</code></td>
+<td>选择器改 <code>#qrimg</code> + 回源取原图</td>
+</tr>
+<tr>
+<td>6</td>
+<td>微信扫码&quot;设计上不可行&quot;</td>
+<td>只看到要白名单的 <code>qrconnect</code></td>
+<td>改用扫码 SDK <code>sdk/qrconnect</code></td>
+</tr>
+<tr>
+<td>7</td>
+<td>换票必 40029</td>
+<td>appid 用成了掌盟的 <code>wx5a4a8ac0fd48303a</code></td>
+<td>掌瓦是 <code>wxcbb49f1f39656c2a</code></td>
+</tr>
+<tr>
+<td>8</td>
+<td>报&quot;查不了「[object Object]」&quot;</td>
+<td><code>getMatches({account})</code> 要字符串，传了对象</td>
+<td>传游戏名（或空串表示自己）</td>
+</tr>
+<tr>
+<td>9</td>
+<td>战绩显示 0 场</td>
+<td><code>getMatches</code> 返回 <code>{list, summary}</code>，不是数组</td>
+<td>取 <code>.list</code></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>11. 合规提醒</h2>
+<p>这套东西只用于<strong>查你自己账号</strong>的战绩。</p>
+<ul>
+<li>抓包 / 复用登录态可能违反腾讯的用户协议，账号风险自负；</li>
+<li>不要把他人的凭证、cookie 存进仓库或分发给第三方；</li>
+<li><code>bridge/mate.json</code>、<code>bridge/accounts/</code>、<code>bridge/peers.json</code> 都已在 <code>.gitignore</code>，保持这样。</li>
+</ul>
+<hr>
+<h2>附录 A：完整请求清单</h2>
+<table>
+<thead>
+<tr>
+<th>用途</th>
+<th>方法</th>
+<th>地址</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>取 sdk_ticket</td>
+<td>POST</td>
+<td><code>app.mval.qq.com/go/auth/get_sdk_ticket</code></td>
+</tr>
+<tr>
+<td>微信出码</td>
+<td>GET</td>
+<td><code>open.weixin.qq.com/connect/sdk/qrconnect</code></td>
+</tr>
+<tr>
+<td>微信轮询</td>
+<td>GET</td>
+<td><code>long.open.weixin.qq.com/connect/l/qrconnect</code></td>
+</tr>
+<tr>
+<td>微信换票</td>
+<td>POST</td>
+<td><code>app.mval.qq.com/go/auth/login_by_wechat</code></td>
+</tr>
+<tr>
+<td>QQ 授权页</td>
+<td>GET</td>
+<td><code>openmobile.qq.com/oauth2.0/m_authorize</code></td>
+</tr>
+<tr>
+<td>QQ 授权确认</td>
+<td>GET</td>
+<td><code>openmobile.qq.com/oauth2.0/m_authlist</code></td>
+</tr>
+<tr>
+<td>QQ 换 openid</td>
+<td>GET</td>
+<td><code>graph.qq.com/oauth2.0/me</code></td>
+</tr>
+<tr>
+<td>QQ 换票</td>
+<td>POST</td>
+<td><code>app.mval.qq.com/go/auth/login_by_qq</code></td>
+</tr>
+<tr>
+<td>角色</td>
+<td>POST</td>
+<td><code>app.mval.qq.com/go/account/get_main_role_raw</code></td>
+</tr>
+<tr>
+<td>战绩列表</td>
+<td>POST</td>
+<td><code>app.mval.qq.com/go/codev/career/record/list</code></td>
+</tr>
+</tbody>
+</table>
+<h2>附录 B：相关文件</h2>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>docs/掌瓦扫码登录完整方案.md</code></td>
+<td>本文</td>
+</tr>
+<tr>
+<td><code>docs/掌瓦登录链路逆向.md</code></td>
+<td>逆向过程与证据（更细的类/字段级记录）</td>
+</tr>
+<tr>
+<td><code>docs/Docker云崽部署与扫码登录.md</code></td>
+<td>容器（TRSS-Yunzai）里的部署实录与排障</td>
+</tr>
+<tr>
+<td><code>bridge/login/README.md</code></td>
+<td>登录模块的实现说明与接口</td>
+</tr>
+<tr>
+<td><code>bridge/providers/mateapp.md</code></td>
+<td>战绩接口与字段口径</td>
+</tr>
+<tr>
+<td><code>bridge/providers/mateapp-scanlogin.md</code></td>
+<td>早期排查存档（部分结论已被本文推翻）</td>
+</tr>
+</tbody>
+</table>
+
+  </main>
+</div>
+<footer>生成自 docs/掌瓦扫码登录完整方案.md</footer>
+</body>
+</html>

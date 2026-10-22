@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>在 Docker 里的 TRSS-Yunzai 上跑扫码登录</title>
+<style>
+:root{
+  --ink:#12141a; --ink-2:#3d4453; --ink-3:#6b7280;
+  --line:#e4e7ec; --bg:#ffffff; --bg-2:#f7f8fa; --bg-3:#f1f3f6;
+  --accent:#c8342b; --accent-soft:#fdf1f0; --accent-2:#1f6feb;
+  --code-bg:#f6f7f9; --ok:#12805c; --warn:#9a6700;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg-2);color:var(--ink);
+  font:16px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
+.page{max-width:860px;margin:0 auto;background:var(--bg);padding:0 0 72px;
+  box-shadow:0 1px 2px rgba(16,24,40,.04),0 12px 40px -12px rgba(16,24,40,.12)}
+header.cover{padding:56px 56px 28px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#fff,#fcfcfd)}
+header.cover .kicker{display:inline-block;font-size:12px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--accent);font-weight:700;margin-bottom:14px}
+header.cover h1{margin:0 0 14px;font-size:34px;line-height:1.3;letter-spacing:-.01em}
+header.cover .meta{color:var(--ink-3);font-size:14px;line-height:1.9}
+header.cover .meta b{color:var(--ink-2);font-weight:600}
+main{padding:8px 56px 0}
+h2{margin:44px 0 14px;font-size:23px;line-height:1.4;padding-bottom:10px;border-bottom:1px solid var(--line)}
+h3{margin:30px 0 10px;font-size:17.5px}
+h4{margin:22px 0 8px;font-size:15.5px;color:var(--ink-2)}
+p{margin:12px 0}
+a{color:var(--accent-2);text-decoration:none;border-bottom:1px solid rgba(31,111,235,.25)}
+ul,ol{margin:12px 0;padding-left:24px}
+li{margin:6px 0}
+li>p{margin:6px 0}
+strong{font-weight:600;color:#0b0d12}
+hr{height:1px;border:0;background:var(--line);margin:40px 0}
+blockquote{margin:18px 0;padding:14px 18px;background:var(--accent-soft);
+  border-left:3px solid var(--accent);border-radius:0 8px 8px 0;color:#5a2420}
+blockquote p{margin:6px 0}
+code{font-family:var(--mono);font-size:.875em;background:var(--code-bg);
+  padding:.15em .4em;border-radius:4px;color:#b4322a;border:1px solid #eceef2}
+pre{margin:16px 0;padding:16px 18px;background:#fbfbfc;border:1px solid var(--line);
+  border-radius:10px;overflow-x:auto;font-size:13px;line-height:1.7;
+  white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere}
+pre code{background:none;border:0;padding:0;color:#242a35;font-size:inherit}
+table{width:100%;border-collapse:separate;border-spacing:0;margin:18px 0;font-size:14px;
+  border:1px solid var(--line);border-radius:10px;overflow:hidden}
+thead th{background:var(--bg-3);font-weight:600;text-align:left;color:var(--ink-2);font-size:13px}
+th,td{padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:nth-child(even){background:#fcfcfd}
+td code{white-space:nowrap}
+img{max-width:100%;height:auto;border:1px solid var(--line);border-radius:8px}
+footer{max-width:860px;margin:0 auto;padding:22px 56px 0;color:var(--ink-3);font-size:12.5px}
+@media print{
+  body{background:#fff}
+  .page{box-shadow:none;max-width:none;padding:0}
+  header.cover{padding:0 0 20px}
+  main{padding:0}
+  h2{page-break-after:avoid}
+  pre,table,blockquote,img{page-break-inside:avoid}
+}
+@media (max-width:720px){
+  header.cover,main,footer{padding-left:20px;padding-right:20px}
+  header.cover h1{font-size:26px}
+  table{font-size:13px}
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="cover">
+    <span class="kicker">部署实录</span>
+    <h1>在 Docker 里的 TRSS-Yunzai 上跑扫码登录</h1>
+    <div class="meta"><b>环境</b>Docker / TRSS_AllBot（Arch Linux，Node 26，Chromium 154）<br><b>结论</b>微信零改动跑通，全链路含落库与战绩<br><b>排障</b>图片的三个「对象陷阱」+ localhost URL 不可达</div>
+  </header>
+  <main>
+<h2>0. 一句话结论</h2>
+<p><strong>能跑，而且微信那条一行代码都不用改。</strong> 容器里实测 937ms 出码，真机扫码后认出
+角色「苦橘甘来 / 钻石III」。</p>
+<p>QQ 那条也能跑，前提是容器里有浏览器 —— 你这台本来就有（Arch 的 <code>chromium</code> 154）。
+我另外让插件<strong>自己会去找系统浏览器</strong>，将来换镜像、换机器也不用再下 100MB 的 Chromium。</p>
+<p>真正需要动手的只有三件事：<strong>同步代码、重启网关、装中文字体</strong>。第三件跟扫码无关，
+但跟你最终能不能看到图有关。</p>
+<hr>
+<h2>1. 勘察：你的容器实际是什么样</h2>
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>实际值</th>
+<th>影响</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>容器名 / 镜像</td>
+<td><code>TRSS_AllBot</code> / <code>trss:allbot</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>发行版</td>
+<td>Arch Linux</td>
+<td>包名跟 Debian 系不同，<code>chromium</code> 就是包名</td>
+</tr>
+<tr>
+<td>云崽根目录</td>
+<td><code>/root/TRSS_AllBot/TRSS-Yunzai</code></td>
+<td>插件在 <code>plugins/Valorant-Plugin</code></td>
+</tr>
+<tr>
+<td>Node</td>
+<td><strong>v26.11.1</strong></td>
+<td>比本地（22.x）新，实测无问题</td>
+</tr>
+<tr>
+<td>puppeteer</td>
+<td>25.13.0（在云崽根 <code>node_modules</code>）</td>
+<td>插件从上层 node_modules 解析到，不用单独装</td>
+</tr>
+<tr>
+<td>插件自带依赖</td>
+<td>只有 <code>yaml</code></td>
+<td>登录模块零依赖，<code>git pull</code> 就能跑</td>
+</tr>
+<tr>
+<td>浏览器</td>
+<td><code>/usr/bin/chromium</code> → <code>Chromium 154.0.8037.97</code></td>
+<td>QQ 扫码要用</td>
+</tr>
+<tr>
+<td>puppeteer 浏览器缓存</td>
+<td><code>~/.cache/puppeteer</code> <strong>不存在</strong></td>
+<td>见 2.1，不影响</td>
+</tr>
+<tr>
+<td>中文字体</td>
+<td><code>fc-list :lang=zh</code> <strong>为空</strong></td>
+<td>见 4.3，必须补</td>
+</tr>
+<tr>
+<td><code>/dev/shm</code></td>
+<td><strong>64 MB</strong></td>
+<td>必须 <code>--disable-dev-shm-usage</code></td>
+</tr>
+<tr>
+<td>内存</td>
+<td>3.9 GB（可用 2.8 GB）</td>
+<td>够，浏览器空闲 5 分钟自动回收</td>
+</tr>
+<tr>
+<td>网关端口</td>
+<td>7820，只监听 <code>127.0.0.1</code></td>
+<td>容器外访问要 <code>-p</code></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>2. 三个「看着像坑，其实不是」的地方</h2>
+<p>排查时最容易在这三处浪费半天，先说清楚。</p>
+<h3>2.1 puppeteer 装了但没下载浏览器 —— 不影响</h3>
+<p><code>ls ~/.cache/puppeteer</code> 报「没有那个文件」，按常识 <code>puppeteer.launch()</code> 应该直接
+报 <code>Could not find Chrome</code>。但实测它是<strong>成功</strong>的，而且打印了一行 <code>[Chromium] /usr/sbin/chromium</code>。</p>
+<p>原因在云崽根目录那个 <code>.puppeteerrc.cjs</code>：</p>
+<pre><code class="language-js">// /root/TRSS_AllBot/TRSS-Yunzai/.puppeteerrc.cjs（镜像自带，不必改）
+if ([&quot;linux&quot;, &quot;android&quot;].includes(process.platform))
+  for (const item of [&quot;chromium&quot;, &quot;chromium-browser&quot;, &quot;google-chrome&quot;, &quot;google-chrome-stable&quot;])
+    try {
+      const chromiumPath = execSync(`command -v ${item}`).toString().trim()
+      if (chromiumPath &amp;&amp; existsSync(chromiumPath)) { executablePath = chromiumPath; break }
+    } catch {}
+module.exports = { skipDownload: !!executablePath, executablePath }
+</code></pre>
+<p>TRSS 镜像烘焙时就写好了这套探测：<strong>有系统浏览器就用系统的，跳过下载</strong>。
+所以「puppeteer 没浏览器」在这个镜像里是个假警报。</p>
+<blockquote>
+<p>但这条兜底只对「在云崽根目录下启动的 node 进程」生效（puppeteer 从 cwd 往上找
+<code>.puppeteerrc.cjs</code>）。插件做自测脚本、或者在别的目录起网关时，就吃不到这个配置 ——
+这就是 3 里那层探测要自己写一遍的原因。</p>
+</blockquote>
+<h3>2.2 Chromium 154 比 puppeteer 25 预期的新 —— 没有影响</h3>
+<p>puppeteer 25 发布时配套的是 Chrome 13x。但本插件只用到 CDP 的通用能力：</p>
+<ul>
+<li><code>newPage()</code> / <code>setUserAgent()</code> / <code>setViewport()</code></li>
+<li><code>evaluateOnNewDocument()</code>（抹 <code>navigator.webdriver</code>）</li>
+<li><code>page.on('request')</code> / <code>page.on('framenavigated')</code>（抓 <code>auth://</code> 跳转）</li>
+<li><code>page.$(selector)</code> + <code>elementHandle.screenshot()</code></li>
+</ul>
+<p>实测：启动 3.1s，开页、注入 UA、截图全部正常。<strong>不用为了版本对齐去降级 Chrome。</strong></p>
+<h3>2.3 网关跑着老代码 —— 这个是真坑</h3>
+<p>改完文件不等于生效。网关是常驻进程，<code>login/</code> 下的适配器在<strong>启动那一刻</strong>就
+<code>register</code> 进内存了，之后你 <code>docker cp</code> 覆盖文件，它照样用旧的。</p>
+<p>症状很好认：插件发 <code>#瓦微信登录</code>，机器人回「网关没有挂载 微信 扫码适配器」，
+可你明明是照文档配的。</p>
+<pre><code class="language-bash"># 判断方法：看启动横幅那行
+grep '扫码适配器' /tmp/valorant-bridge.log | tail -1
+# 旧代码：扫码适配器：qq
+# 新代码：扫码适配器：qq / wx      ← 认这一行
+</code></pre>
+<p>顺手记一个反例：容器里还有一份 <code>config/config/config.yaml</code> 是<strong>旧模板</strong>
+（没有 <code>gateway.autoStart</code>）。这不冲突 —— 插件读配置时会拿
+<code>config/default_config/config.yaml</code> 补缺的键，所以 <code>autoStart</code> 实际是 <code>true</code>。
+但要知道这件事，否则「为什么我没开自动启动它自己起来了」会困惑很久。</p>
+<hr>
+<h2>3. 代码改动：让插件自己找浏览器</h2>
+<p>改动只在 <code>bridge/login/browser.js</code>，逻辑是「先找系统浏览器，找不到再退回 puppeteer 自带」。</p>
+<pre><code class="language-js">import { existsSync } from 'node:fs'
+
+const SYSTEM_CANDIDATES = [
+  process.env.PUPPETEER_EXECUTABLE_PATH,
+  process.env.CHROME_PATH,
+  '/usr/bin/chromium', '/usr/bin/chromium-browser',
+  '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable',
+  '/usr/sbin/chromium', '/opt/google/chrome/chrome', '/snap/bin/chromium',
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  '/Applications/Chromium.app/Contents/MacOS/Chromium',
+  '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge'
+]
+
+function detectExecutable () {
+  for (const c of SYSTEM_CANDIDATES) {
+    if (!c) continue
+    try { if (existsSync(c)) return c } catch {}
+  }
+  return ''
+}
+</code></pre>
+<p>优先级变成：</p>
+<table>
+<thead>
+<tr>
+<th>顺序</th>
+<th>来源</th>
+<th>命中条件</th>
+<th>容器里</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>puppeteer-core</code> + 系统浏览器</td>
+<td>探测到可执行文件，且装了 <code>puppeteer-core</code></td>
+<td>✗（没装这个包）</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>puppeteer</code> + 系统浏览器</td>
+<td>探测到可执行文件，有 <code>puppeteer</code></td>
+<td>✅ 命中</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>puppeteer</code> 自带浏览器</td>
+<td>没系统浏览器，但缓存里有</td>
+<td>—</td>
+</tr>
+<tr>
+<td>4</td>
+<td>云崽宿主 <code>lib/puppeteer/puppeteer.js</code></td>
+<td>上面都不行但宿主有</td>
+<td>兜底</td>
+</tr>
+<tr>
+<td>5</td>
+<td>都没有 → 返回 null</td>
+<td>调用方降级到纯 HTTP</td>
+<td>不会走到</td>
+</tr>
+</tbody>
+</table>
+<p>实测输出：</p>
+<pre><code>[login] 浏览器就绪（puppeteer(/usr/bin/chromium)）
+source: puppeteer(/usr/bin/chromium) | 耗时 3104 ms
+version: Chrome/154.8037.97
+</code></pre>
+<p>两个逃生阀：</p>
+<table>
+<thead>
+<tr>
+<th>环境变量</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PUPPETEER_EXECUTABLE_PATH=/opt/chrome/chrome</code></td>
+<td>手动指定，最高优先</td>
+</tr>
+<tr>
+<td><code>LOGIN_BROWSER=off</code></td>
+<td>彻底禁用浏览器，QQ 强制降级纯 HTTP</td>
+</tr>
+<tr>
+<td><code>LOGIN_BROWSER_IDLE=600000</code></td>
+<td>浏览器空闲回收时间（毫秒），默认 5 分钟</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>4. 部署步骤</h2>
+<h3>4.1 同步文件</h3>
+<p>从本地仓库拷到容器。登录相关一共 11 个文件：</p>
+<pre><code class="language-bash">P=/root/TRSS_AllBot/TRSS-Yunzai/plugins/Valorant-Plugin
+# 宿主机上执行（在仓库根目录）
+for f in \
+  bridge/login/wxqr.js bridge/login/qqpage.js bridge/login/browser.js \
+  bridge/login/exchange.js bridge/login/qq.js bridge/login/wechat.js \
+  bridge/login/session.js \
+  apps/login.js apps/help.js package.json tools/test-login.mjs ; do
+  docker cp &quot;$f&quot; &quot;TRSS_AllBot:$P/$f&quot;
+done
+</code></pre>
+<blockquote>
+<p>前提：容器里的插件仓库比你本地那份<strong>旧</strong>。若反过来（容器里是 <code>git pull</code> 来的新版），
+覆盖前先 <code>git -C $P status</code> 看一眼，别把上游新提交盖掉。</p>
+</blockquote>
+<p>不用 <code>pnpm install</code> —— 登录模块零依赖，<code>puppeteer</code> 由云崽根目录提供。</p>
+<h3>4.2 重启网关</h3>
+<pre><code class="language-bash"># 容器内
+pkill -f 'bridge/server.mjs'
+cd /root/TRSS_AllBot/TRSS-Yunzai/plugins/Valorant-Plugin
+PROVIDER=mateapp TOKEN=change-me PORT=7820 nohup node bridge/server.mjs &gt;&gt; /tmp/valorant-bridge.log 2&gt;&amp;1 &amp;
+tail -8 /tmp/valorant-bridge.log    # 确认「扫码适配器：qq / wx」
+</code></pre>
+<p>如果让插件 <code>autoStart</code> 自己拉，就跳过这一步（但只在网关<strong>没在跑</strong>时才会拉，
+所以旧进程得先杀掉）。</p>
+<h3>4.3 装中文字体（必须，跟扫码无关）</h3>
+<p>这是容器里最容易被忽略的一条。<strong>没中文字体，战绩图全是豆腐块</strong>：</p>
+<pre><code class="language-bash"># 装之前
+fc-list :lang=zh        # 空
+</code></pre>
+<p>截图对比（同一段 HTML，<code>font-family: sans-serif</code>）：</p>
+<table>
+<thead>
+<tr>
+<th>装之前</th>
+<th>装之后</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><img src="data:image/png;base64,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" alt="before"></td>
+<td><img src="data:image/png;base64,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" alt="after"></td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-bash"># 装之后
+pacman -S --needed --noconfirm noto-fonts-cjk   # 188 MiB 下载 / 299 MiB 装完
+fc-match 'sans-serif:lang=zh'
+# NotoSansCJK-Regular.ttc: &quot;Noto Sans CJK KR&quot; &quot;Regular&quot;
+</code></pre>
+<p><code>fc-match</code> 报 KR 是正常的 —— Noto CJK 是一个 <code>.ttc</code>，简繁日韩共用字形，
+中文照样渲染正确（上面右图就是证据）。</p>
+<p><strong>为什么这跟扫码有关</strong>：扫码那张图是上游给的 JPEG，不经过 Chromium，所以出码一直正常；
+一旦扫码成功、要出「战绩图」，就变成 Chromium 截图 → 没字体就全是方块，看起来像&quot;插件坏了&quot;。</p>
+<h3>4.4 验证</h3>
+<pre><code class="language-bash"># 容器内：只看适配器挂没挂上（不需要人扫）
+curl -s -H 'Authorization: Bearer change-me' \
+  http://127.0.0.1:7820/v1/login/adapters
+# {&quot;ok&quot;:true,&quot;data&quot;:{&quot;adapters&quot;:[&quot;qq&quot;,&quot;wx&quot;]},...}
+
+# 出码自测（微信，纯 HTTP，秒出）
+cd /root/TRSS_AllBot/TRSS-Yunzai/plugins/Valorant-Plugin
+SET_NO_OPEN=1 node tools/test-login.mjs wx
+
+# 走网关全链路（出码 → 扫 → commit 落库 → 查战绩），和插件实际调用顺序一致
+USER_ID=cli node tools/gw-login-check.mjs
+</code></pre>
+<p>出码图落在 <code>/tmp/login-wx.jpg</code> 或 <code>/tmp/gw-wx.jpg</code>，容器里没有桌面，要拿出来看：</p>
+<pre><code class="language-bash"># 宿主机上
+docker cp TRSS_AllBot:/tmp/gw-wx.jpg ./qr.jpg &amp;&amp; open qr.jpg      # macOS
+docker cp TRSS_AllBot:/tmp/gw-wx.jpg ./qr.jpg &amp;&amp; xdg-open qr.jpg  # Linux
+</code></pre>
+<hr>
+<h2>5. 实测数据（你这台机器）</h2>
+<h3>5.1 分环节耗时</h3>
+<table>
+<thead>
+<tr>
+<th>环节</th>
+<th>容器内</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>加载登录模块</td>
+<td>&lt; 300 ms</td>
+<td><code>import('./bridge/login/index.js')</code> → <code>adapters: qq/wx</code></td>
+</tr>
+<tr>
+<td>微信出码（直连适配器）</td>
+<td><strong>937 ms</strong></td>
+<td>46 KB JPEG，<code>appname</code> 回显「掌上无畏契约」</td>
+</tr>
+<tr>
+<td>微信出码（走网关 HTTP）</td>
+<td><strong>1.0–2.8 s</strong></td>
+<td>多一次 HTTP + 会话登记；波动来自上游取票</td>
+</tr>
+<tr>
+<td>扫码 → 已扫</td>
+<td>一次轮询内</td>
+<td>2 s 间隔</td>
+</tr>
+<tr>
+<td>已扫 → 确认</td>
+<td><strong>3 s</strong></td>
+<td><code>23:24:13</code> → <code>23:24:16</code></td>
+</tr>
+<tr>
+<td>浏览器冷启动</td>
+<td><strong>3104 ms</strong></td>
+<td><code>puppeteer(/usr/bin/chromium)</code>，只发生一次</td>
+</tr>
+<tr>
+<td>QQ 出码</td>
+<td><strong>7258 ms</strong></td>
+<td>398×398 真二维码</td>
+</tr>
+<tr>
+<td>二维码有效期</td>
+<td>180 s</td>
+<td>上游控制，本地 <code>LOGIN_TTL</code> 只是计时</td>
+</tr>
+</tbody>
+</table>
+<h3>5.2 全链路结果（走网关，和插件调用顺序一致）</h3>
+<pre><code>✅ 网关出码 2809ms  会话 f9db3309753c2ec5
+   23:24:13 → scanned (已扫描，请在手机上点「确认登录」)
+   23:24:16 → confirmed (登录成功：苦橘甘来)
+🎉 profile: {&quot;nickname&quot;:&quot;苦橘甘来&quot;,&quot;roleName&quot;:&quot;苦橘甘来&quot;,&quot;tierText&quot;:&quot;钻石III&quot;}
+💾 落库: {&quot;saved&quot;:true,&quot;user&quot;:&quot;cli&quot;,&quot;role&quot;:{&quot;uid&quot;:&quot;JA-10621b7…&quot;,&quot;name&quot;:&quot;苦橘甘来&quot;,&quot;roleId&quot;:&quot;1383005380427&quot;}}
+📋 账号：苦橘甘来（JA-10621b7…）
+   最近 3 场：
+   · 天枢云阙 | 竞技模式 | 炼狱 | 12-16-9 | ACS 221
+   · 源工重镇 | 竞技模式 | 炼狱 | 9-8-4 | ACS 304
+   · 亚海悬城 | 竞技模式 | 芮娜 | 12-12-5 | ACS 296
+   汇总: {&quot;matches&quot;:3,&quot;wins&quot;:1,&quot;losses&quot;:1,&quot;winRate&quot;:0.5,&quot;acs&quot;:274,&quot;kd&quot;:1.45}
+</code></pre>
+<p>落库文件 <code>bridge/accounts/cli.json</code>：</p>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>顶层字段</td>
+<td><code>login</code> / <code>role</code> / <code>updatedAt</code> / <code>source</code></td>
+</tr>
+<tr>
+<td>cookie</td>
+<td><strong>8 段</strong>：clientType / appid / acctype / openid / access_token / userId / accountType / tid</td>
+</tr>
+<tr>
+<td>scene</td>
+<td><strong>175 字符</strong>，<code>v3_</code> 开头</td>
+</tr>
+<tr>
+<td>source</td>
+<td><code>scan:wx</code>（扫码来的；抓包导入的仍是 <code>import</code>）</td>
+</tr>
+<tr>
+<td>文件权限</td>
+<td><code>600</code>（<code>-rw-------</code>，只有 root 能读）</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong><code>source</code> 那个字段是这次顺手修的</strong>：<code>saveAccount()</code> 的默认值是 <code>'import'</code>，
+扫码成功落库也会被标成「抓包导入」，排查时容易看错凭证来源。现在
+<code>saveLogin()</code> 会把 <code>type</code> 一起传下去，写成 <code>scan:wx</code> / <code>scan:qq</code>。</p>
+</blockquote>
+<p><strong>这一步的意义</strong>大于&quot;登录成功&quot;：它同时证明 —— 容器里的网关能出码、能轮询、能换票、
+能把凭证按人落库、能拿这份凭证查到真实战绩。也就是插件里 <code>#瓦微信登录</code> 那条路，
+除了「出图发给 QQ 群」这一段（要等云崽起来），其余全跑通了。</p>
+<hr>
+<h2>6. 容器专属的坑（清单）</h2>
+<table>
+<thead>
+<tr>
+<th>现象</th>
+<th>原因</th>
+<th>处理</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Chromium 起不来，报 sandbox 相关</td>
+<td>容器以 root 跑</td>
+<td>启动参数已含 <code>--no-sandbox --disable-setuid-sandbox</code></td>
+</tr>
+<tr>
+<td>打开页面卡死 / 浏览器莫名崩溃</td>
+<td><code>/dev/shm</code> 只有 64 MB</td>
+<td>已含 <code>--disable-dev-shm-usage</code>；或 <code>docker run --shm-size=1g</code></td>
+</tr>
+<tr>
+<td>出图全是方块</td>
+<td>没 CJK 字体</td>
+<td>见 4.3</td>
+</tr>
+<tr>
+<td>「网关没有挂载 微信 扫码适配器」</td>
+<td>网关跑着老代码</td>
+<td>重启网关，看横幅</td>
+</tr>
+<tr>
+<td>端口占不住 / 起来就退</td>
+<td>旧的 <code>server.mjs</code> 还在</td>
+<td><code>pkill -f bridge/server.mjs</code> 再起</td>
+</tr>
+<tr>
+<td>容器外连不上 7820</td>
+<td>只监听 <code>127.0.0.1</code></td>
+<td><code>docker run -p 127.0.0.1:7820:7820</code>，建议仍绑回环</td>
+</tr>
+<tr>
+<td>重建容器后登录态没了</td>
+<td><code>bridge/accounts/</code> 在容器内</td>
+<td>挂卷：<code>-v valorant-accounts:/root/TRSS_AllBot/TRSS-Yunzai/plugins/Valorant-Plugin/bridge/accounts</code></td>
+</tr>
+<tr>
+<td>日志里「续期成功 1 份，失败 3 份」</td>
+<td>旧凭证的票据已过期</td>
+<td>正常，重新扫一次即可</td>
+</tr>
+<tr>
+<td>「登录态失效（result=999999）」</td>
+<td>同上</td>
+<td>同上</td>
+</tr>
+<tr>
+<td><strong>QQ 里气泡显示「消息加载失败」</strong></td>
+<td>图片被当成文本发了，见 6.1</td>
+<td>用 <code>imageSegment()</code> 包一下</td>
+</tr>
+<tr>
+<td>「图片分辨率检测错误 <code>unsupported file type</code>」</td>
+<td><code>file</code> 传成了对象（<code>[object Object]</code>），见 6.2</td>
+<td><code>file</code> 必须是 <code>base64://…</code> 字符串</td>
+</tr>
+<tr>
+<td><code>ENOENT: open '[object Object]'</code>（在 <code>uploadMedia</code> 里）</td>
+<td>把 <code>screenshot()</code> 返回的<strong>段</strong>当成了 Buffer，见 6.2</td>
+<td>递归解包 <code>.file</code> 到底</td>
+</tr>
+<tr>
+<td>图发出去了但 QQ 里是空白</td>
+<td>图片 URL 是 <code>localhost</code>，QQ 访问不到，见 6.3</td>
+<td><code>QQBot.yaml</code> 里 <code>markdown: {QQ号: legacy}</code></td>
+</tr>
+</tbody>
+</table>
+<h3>6.1 「消息加载失败」到底是怎么回事（值得单独说）</h3>
+<p>这个现象跟扫码、跟容器都没关系，但最容易在容器里撞上——因为 TRSS_AllBot 默认接的是
+<strong>QQ 官方机器人</strong>（<code>@windtrace/qq-group-bot</code>），而不是 icqq / OneBot。</p>
+<p>日志里是这么写的：</p>
+<pre><code class="language-text">[23:29:57][INFO][3889734773] send to User(AEE5AF04...): &lt;markdown,content={&quot;0&quot;:255,&quot;1&quot;:216,&quot;2&quot;:255,&quot;3&quot;:224,...
+                                                                                      ↑ FF D8 FF E0 = JPEG 文件头
+</code></pre>
+<p><strong>整张二维码被 JSON 化塞进了 markdown 正文。</strong> 客户端当然渲染不出来，就显示「消息加载失败」。</p>
+<p>根因在 <code>plugins/QQBot-Plugin/adapter/build.js</code>：</p>
+<pre><code class="language-js">if (typeof i === &quot;object&quot;) i = { ...i }
+else i = { type: &quot;text&quot;, text: Bot.String(i) }
+</code></pre>
+<ul>
+<li>插件这边 <code>e.reply(buffer)</code> 传的是 <strong>Buffer</strong>；</li>
+<li>Buffer 是对象 → <code>{...buffer}</code> 变成 <code>{0:255, 1:216, 2:255, 3:224, …}</code>；</li>
+<li>展开后没有 <code>type</code> 字段 → 进 <code>default:</code> 分支 → <code>makeRawMarkdownText(Bot.String(i))</code> → 变成文本；</li>
+<li>于是 <code>content</code> 就是字节数组的 JSON。</li>
+</ul>
+<p><code>icqq</code> / <code>OneBot</code> 接受裸 Buffer，所以这个坑<strong>只在官方机器人协议端出现</strong>——换框架看起来好好的，一上 QQBot 就炸。</p>
+<p>修法（<code>utils/render.js</code>）：把二进制统一归一到 Buffer，再拼成<strong>字符串形式</strong>的 <code>file</code>。</p>
+<pre><code class="language-js">export function imageSegment (img) {
+  const buf = toBuffer(img)                 // Buffer / Uint8Array / ArrayBuffer 都收
+  if (buf) return { type: 'image', file: `base64://${buf.toString('base64')}` }
+  const file = String(img)
+  if (typeof globalThis.segment?.image === 'function') {
+    try { return globalThis.segment.image(file) } catch {}
+  }
+  return { type: 'image', file }
+}
+</code></pre>
+<p>两个必须踩对的点：</p>
+<ol>
+<li><strong><code>file</code> 必须是字符串</strong>，不能是对象。QQBot 取图片数据是 <code>Bot.Buffer(_file.file)</code>，
+而 <code>Bot.Buffer()</code> 只对字符串做解析（<code>base64://</code> / <code>http://</code> / 文件路径），
+拿到对象会先 <code>String()</code> 成 <code>&quot;[object Object]&quot;</code>。</li>
+<li><strong>不能只判 <code>Buffer.isBuffer</code></strong>。puppeteer 25 的 <code>page.screenshot()</code> 返回的是
+<code>Uint8Array</code>（实测 <code>Buffer.isBuffer(shot) === false</code>），漏判就会走 <code>String(uint8array)</code>，
+变成 <code>&quot;255,216,255,224,…&quot;</code> 这种字符串，照样不是图片。</li>
+</ol>
+<blockquote>
+<p>顺带：<code>markdown</code> 元素（<code>msg_type=2</code>）在官方机器人上需要申请模板 / 权限。
+本插件回复的都是纯文本 + 图片，不涉及模板消息；如果你自己加了 markdown 卡片而显示空白，
+先去开放平台确认权限，别怀疑代码。</p>
+</blockquote>
+<h3>6.2 「图片分辨率检测错误」—— 和 6.1 是同一个病根的第二层</h3>
+<p>修完 6.1 之后日志里会冒出新的报错：</p>
+<pre><code class="language-text">[ERRO] 图片分辨率检测错误 &lt;Buffer 5b 6f 62 6a 65 63 74 20 4f 62 6a 65 63 74 5d&gt;
+TypeError: unsupported file type: undefined
+    at imageSize (…/image-size@2.0.4/…/lookup.js:27:11)
+    at QQBotAdapter.makeMarkdownImage (.../QQBot-Plugin/adapter/build.js:107:26)
+</code></pre>
+<p>把那个 Buffer 解出来是 <code>[object Object]</code>（<code>5b 6f 62 6a 65 63 74 …</code> 就是它的 ASCII）。
+也就是说 <code>Bot.Buffer()</code> 收到的不是图片数据，而是一个对象的字符串形式。</p>
+<p>对照 <code>build.js</code> 和 <code>lib/util.js</code> 就很清楚了：</p>
+<pre><code class="language-js">// build.js:106
+const file = _file.url || _file.file
+const buffer = await Bot.Buffer(file)
+
+// lib/util.js:294
+async Buffer(data) {
+  if (!Buffer.isBuffer(data)) {
+    data = this.String(data)            // ← 对象 → &quot;[object Object]&quot;
+    if (data.startsWith(&quot;base64://&quot;)) …
+  }
+}
+</code></pre>
+<p>所以 6.1 的修法里，<strong><code>file</code> 一定要是字符串</strong>。用 <code>segment.image(buffer)</code> 那种
+「file 是对象」的段，就会精确复现这个报错。</p>
+<p><strong>还有一层没说完</strong>：修完 <code>file</code> 是字符串之后，如果直接 <code>imageSegment(段)</code>，
+报错会换个样子 —— 从「分辨率检测错误」变成：</p>
+<pre><code class="language-text">发送消息错误 [ { type: 'image', file: '[object Object]', name: undefined } ]
+ENOENT: no such file or directory, open '[object Object]'
+    at getBase64FromLocal (qq-group-bot/lib/utils.js:33:22)
+    at Bot.uploadMedia    (qq-group-bot/lib/qqBot.js:106:53)
+</code></pre>
+<p>因为云崽的 <code>screenshot()</code> <strong>返回的不是 Buffer，而是已经包好的段</strong>：</p>
+<pre><code class="language-js">// lib/puppeteer/puppeteer.js
+renderer.screenshot = async (name, data) =&gt; {
+  const img = await renderer.render(name, data)   // Buffer
+  return img ? segment.image(img) : img           // → { type:'image', file: Buffer }
+}
+</code></pre>
+<p>所以插件里 <code>await puppeteer.screenshot(...)</code> 拿到的是 <code>{type:'image', file: Buffer}</code>。
+把它整个丢进 <code>imageSegment()</code> 再 <code>String()</code> 一次，又是 <code>&quot;[object Object]&quot;</code>。</p>
+<p>正解是<strong>递归解包</strong>，不管套几层都拆到底：</p>
+<pre><code class="language-js">function fileString (input, depth = 0) {
+  if (input == null || depth &gt; 4) return ''
+  const buf = toBuffer(input)                       // Buffer / TypedArray / ArrayBuffer
+  if (buf) return buf.length ? `base64://${buf.toString('base64')}` : ''
+  if (typeof input === 'string') return input
+  if (typeof input === 'object') {                  // 段：{type:'image', file|data}
+    const next = input.file ?? input.data ?? input.buffer
+    if (next != null &amp;&amp; next !== input) return fileString(next, depth + 1)
+  }
+  return ''
+}
+</code></pre>
+<p>实测四种输入都能拿到同一个 <code>base64://…</code>：</p>
+<table>
+<thead>
+<tr>
+<th>输入</th>
+<th>解析结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Buffer</code></td>
+<td><code>base64:///9j/4BEi…</code></td>
+</tr>
+<tr>
+<td><code>Uint8Array</code>（puppeteer 25 的返回值）</td>
+<td><code>base64:///9j/4BEi…</code></td>
+</tr>
+<tr>
+<td><code>{type:'image', file: Buffer}</code>（云崽 screenshot）</td>
+<td><code>base64:///9j/4BEi…</code></td>
+</tr>
+<tr>
+<td><code>{type:'image', file: {type:'image', file: Buffer}}</code>（双层）</td>
+<td><code>base64:///9j/4BEi…</code></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>一句话记法：<strong>这条链上有三个「对象陷阱」</strong> —— 元素是对象（Buffer 被展开）、
+<code>file</code> 是对象（<code>segment.image</code> 的产出）、返回值是对象（<code>screenshot</code> 的产出）。
+全都归一成字符串就没事了。</p>
+</blockquote>
+<h3>6.3 图片还有第三关：<code>localhost</code> 的 URL，QQ 服务器访问不到</h3>
+<p><strong>这是最容易漏的一条。</strong> 分辨率修好后，图片能&quot;发出去&quot;，但 QQ 里可能还是空的。</p>
+<p>原因：QQBot 默认走 <strong>markdown 模式</strong>，图片会被转成 markdown 图片语法：</p>
+<pre><code class="language-text">![图片 #800px #600px](http://localhost:2536/File/xxxxxxxx)
+</code></pre>
+<p>那个 URL 来自 <code>config/config/server.yaml</code> 的 <code>url: http://localhost:2536</code>，
+由云崽自己的 HTTP 服务提供。<strong>QQ 的服务器不可能访问到你的 localhost。</strong></p>
+<p>适配器本来有个 <code>toBotUpload: true</code> 的兜底（借一个 icqq 账号的 <code>uploadImage</code> 把图传到
+QQ 图床），但这个容器里只有 QQBot 账号，没有 icqq —— <code>_uploadImageBot</code> 找不到，
+于是退回本地 URL。</p>
+<p><strong>解</strong>：让 QQBot 走「原生消息元素」，图片就会用 <code>uploadMedia()</code> 富媒体上传
+（<code>msg_type=7</code> + <code>file_info</code>），完全不依赖公网 URL。改 <code>config/QQBot.yaml</code>：</p>
+<pre><code class="language-yaml">markdown:
+  &quot;3889734773&quot;: legacy      # 你的机器人 QQ 号
+  &quot;4010481450&quot;: legacy
+</code></pre>
+<p><code>legacy</code> 这个值是 <code>adapter/send.js</code> 认的开关：</p>
+<pre><code class="language-js">if (config.markdown[data.self_id] === &quot;legacy&quot;) msgs = await this.makeMsg(data, msg)
+else msgs = await this.makeRawMarkdownMsg(data, msg)   // ← 默认，图片变 markdown URL
+</code></pre>
+<p>改完重启云崽。代价是没有 markdown 排版（本来也用不上），换来图片能真正显示。</p>
+<blockquote>
+<p>如果你<strong>有</strong>公网域名，也可以不改 legacy，改把 <code>server.yaml</code> 的 <code>url</code> 指到公网地址
+（记得放行 2536 端口）。两条路选一条，混着用会互相打架。</p>
+</blockquote>
+<hr>
+<h2>7. 命令速查</h2>
+<pre><code class="language-bash"># ---- 宿主机 ----
+docker ps --format '{{.Names}}\t{{.Status}}'                    # 容器活着吗
+docker exec TRSS_AllBot bash -lc 'tail -20 /tmp/valorant-bridge.log'
+docker cp TRSS_AllBot:/tmp/gw-wx.jpg ./qr.jpg                   # 取二维码
+
+# ---- 容器内 ----
+P=/root/TRSS_AllBot/TRSS-Yunzai/plugins/Valorant-Plugin
+curl -s -H 'Authorization: Bearer change-me' http://127.0.0.1:7820/health
+curl -s -H 'Authorization: Bearer change-me' http://127.0.0.1:7820/v1/login/adapters
+ps aux | grep server.mjs | grep -v grep
+cd $P &amp;&amp; SET_NO_OPEN=1 node tools/test-login.mjs wx
+cd $P &amp;&amp; USER_ID=cli node tools/gw-login-check.mjs
+</code></pre>
+<hr>
+<h2>8. 排障顺序（别乱试）</h2>
+<ol>
+<li><code>curl /health</code> 通不通 → 不通说明网关没起 / 端口冲突</li>
+<li><code>curl /v1/login/adapters</code> 有没有 <code>wx</code> → 没有说明网关是老代码，重启</li>
+<li><code>node tools/test-login.mjs wx</code> 出不出码 → 不出说明上游或网络问题（与容器无关）</li>
+<li>出码但扫不动 → 码过期（180s），重发；或微信侧风控</li>
+<li>扫成功但落库失败 → 看 commit 返回的 <code>hint</code>；多为 <code>scene</code> 缺失，去 App 里进一次「我的 → 战绩」</li>
+<li>都能跑但图是方块 → 字体（4.3）</li>
+<li><strong>QQ 里显示「消息加载失败」</strong> → 先翻日志找 <code>&lt;markdown,content={&quot;0&quot;:255,…}&gt;</code>，
+命中就是 Buffer 被当文本发了（6.1）。注意这一步要在<strong>包成 image 段之后</strong>再测，
+否则容器里怎么调都正常、一到 QQ 就炸 —— 因为问题出在协议端，不在容器。</li>
+</ol>
+<blockquote>
+<p>最后这条的排查经验值得记住：<strong>「容器里调通了」和「QQ 里能看见」是两件事</strong>。
+前者验证的是业务逻辑（出码、换票、落库、取数），后者验证的是消息序列化。
+两条链任何一条断，用户看到的都是「没反应」或「加载失败」。</p>
+</blockquote>
+
+  </main>
+</div>
+<footer>生成自 docs/Docker云崽部署与扫码登录.md</footer>
+</body>
+</html>

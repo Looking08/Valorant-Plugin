@@ -170,8 +170,24 @@ export class LoginManager {
     if (session && !['confirmed', 'expired', 'blocked'].includes(session.status)) {
       session.status = 'cancelled'
       session.message = '已取消'
+      // 浏览器版适配器会挂着一条页面/浏览器上下文，取消时得让它收摊
+      this.release(session)
     }
     return session ? this.view(session) : null
+  }
+
+  /**
+   * 让适配器释放会话占用的资源（QQ 页面版会开一个真实浏览器页）。
+   * 适配器没实现 close() 就什么也不做。
+   */
+  release (session) {
+    if (!session) return
+    const adapter = this.adapters.get(session.type)
+    if (typeof adapter?.close !== 'function') return
+    try {
+      const ret = adapter.close(session.state)
+      if (ret?.catch) ret.catch(() => {})
+    } catch {}
   }
 
   /**
@@ -196,8 +212,13 @@ export class LoginManager {
     for (const [id, session] of this.sessions) {
       // 终态留 5 分钟方便前端回查，之后清掉
       const keep = ['confirmed', 'cancelled', 'expired', 'blocked'].includes(session.status)
-      if (keep && now - session.createdAt > 5 * 60 * 1000) this.sessions.delete(id)
-      else if (!keep && now > session.expireAt + 60 * 1000) this.sessions.delete(id)
+      if (keep && now - session.createdAt > 5 * 60 * 1000) {
+        this.release(session)
+        this.sessions.delete(id)
+      } else if (!keep && now > session.expireAt + 60 * 1000) {
+        this.release(session)
+        this.sessions.delete(id)
+      }
     }
   }
 }
