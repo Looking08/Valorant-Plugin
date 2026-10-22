@@ -10,8 +10,7 @@
  *    都只记一条日志并跳过，其余功能照常可用。
  *    （这个约定来自 GloryOfKings-Plugin 的 index.js，60 多个模块的体量下非常必要。）
  *
- * 扫描逻辑抽到了 `adapter/apps.js` —— alemonjs 入口（`alemon.js`）用的是同一份，
- * 两边指令表不可能对不上。
+ * 扫描逻辑抽到了 `adapter/apps.js`，这里只负责建目录、加载、报数。
  */
 import path from 'node:path'
 import fs from 'node:fs/promises'

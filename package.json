@@ -1,7 +1,7 @@
 {
     "name": "valorant-plugin",
-    "version": "0.2.0",
-    "description": "适用于 TRSS-Yunzai / Yunzai V3 / ALemonJS 的无畏契约（VALORANT，含手游国服掌瓦）战绩查询插件：数据面板 / 战绩列表 / 单局详情 / 枪械熟练度 / 一人一份登录态",
+    "version": "0.4.0",
+    "description": "适用于 TRSS-Yunzai / Yunzai V3 的无畏契约（VALORANT，含手游国服掌瓦）战绩查询插件：数据面板 / 战绩列表 / 单局详情 / 枪械熟练度 / 微信·QQ 扫码登录 / 一人一份登录态",
     "author": "Looking08",
     "license": "MIT",
     "type": "module",
@@ -17,16 +17,12 @@
         "url": "https://github.com/Looking08/Valorant-Plugin/issues"
     },
     "exports": {
-        ".": {
-            "import": "./alemon.js",
-            "default": "./alemon.js"
-        }
+        ".": "./index.js"
     },
     "keywords": [
         "yunzai",
         "trss",
         "yunzai-plugin",
-        "alemonjs",
         "valorant",
         "无畏契约",
         "掌上无畏契约"
@@ -36,10 +32,22 @@
         "probe": "node bridge/providers/mateapp-cli.mjs",
         "cred": "node tools/har2cred.mjs",
         "test:parse": "node test/parse-payload.mjs",
-        "test:alemon": "node test/alemon-smoke.mjs"
+        "test:login": "node tools/test-login.mjs"
     },
     "dependencies": {
         "yaml": "^2.3.4"
+    },
+    "peerDependencies": {
+        "puppeteer": ">=21",
+        "puppeteer-core": ">=21"
+    },
+    "peerDependenciesMeta": {
+        "puppeteer": {
+            "optional": true
+        },
+        "puppeteer-core": {
+            "optional": true
+        }
     },
     "imports": {
         "#components": "./components/index.js",

@@ -1,11 +1,8 @@
 /**
- * `apps/` 扫描器 —— 云崽入口（`index.js`）和 alemonjs 入口（`alemon.js`）共用同一份。
+ * `apps/` 扫描器 —— 云崽入口（`index.js`）用它把指令类找出来。
  *
- * 两个框架要的东西不一样：
- * - 云崽要一个 `{ apps: { 名字: 类 } }`，由框架自己去 new 并注册 `rule` 正则；
- * - alemonjs 没有 `rule` 这个概念，得我们自己把类 new 出来、读 `rule`、自己分发。
- *
- * 所以这里只负责**把类找出来**，实例化的时机交给各自入口。
+ * 云崽要一个 `{ apps: { 名字: 类 } }`，由框架自己 new 出来并注册 `rule` 正则。
+ * 所以这里只负责**把类找出来**，实例化的时机交给入口。
  *
  * ⚠️ 单个模块加载失败不能拖垮整个插件（同 index.js 的约定）：语法错 / 依赖缺失
  *    只记一条日志并跳过，其余功能照常可用。
@@ -40,7 +37,7 @@ export async function scanDirectory (directory) {
 /**
  * 扫 `apps/`，返回每个模块里「看起来像云崽指令类」的导出。
  *
- * @param {(msg: string) => void} onError 加载失败时的回调（云崽用 logger，alemonjs 也用 logger）
+ * @param {(msg: string) => void} onError 加载失败时的回调（入口传 logger 进来）
  * @returns {Promise<{name:string, Ctor:Function}[]>} 同名文件（不同子目录）自动加序号后缀
  */
 export async function loadAppClasses (onError = () => {}) {
