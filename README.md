@@ -21,7 +21,7 @@
 
 ## 安装
 
-只支持云崽系（Yunzai V3 / TRSS-Yunzai / Miao 等），**目录名必须是 `Valorant-Plugin`**，代码里写死了。
+支持云崽系（Yunzai V3 / TRSS-Yunzai / Miao 等），**目录名`Valorant-Plugin`**
 
 ```bash
 cd ./plugins
@@ -63,9 +63,6 @@ pacman -S --needed noto-fonts-cjk   # Debian 系：apt install fonts-noto-cjk
 
 登录态硬 3 天过期，到期重扫一次就行；`#瓦登录状态` 随时看还能不能用。
 
-> 从 ALemonJS 过来的用户注意：本仓库**已不再提供 ALemonJS 入口**（`alemon.js`、`adapter/alemon/` 均已移除），
-> 现在只维护云崽这一条线。需要旧版可以 `git log` 找到移除前的那次提交。
-
 ## 起数据源
 
 插件不直接连游戏接口，中间隔一个小网关（`bridge/`，**零依赖**，只要装有 node）。
@@ -105,7 +102,6 @@ cp bridge/providers/mateapp.example.json bridge/mate.json
 > 那种情况插件会直接把该执行哪条命令打给你。
 
 ⚠️ `bridge/mate.json`、`bridge/accounts/`、`config/config/`、`data/` 都在 `.gitignore` 里，**不会随仓库分发**。
-理由很直白：那几个文件里是你的登录 cookie，谁拿到谁就能查你的号。
 
 ## 指令
 
@@ -141,20 +137,6 @@ cp bridge/providers/mateapp.example.json bridge/mate.json
 | QQ 扫码 | `#瓦扫码登录` | 网关机器上有个 Chrome/Chromium | ✅ 要浏览器，约 10 秒出码 |
 | 抓包导入 | `#瓦导入` | 手机上抓一次包 | ✅ 最保险，能用 3 天 |
 
-### 微信（推荐，零配置）
-
-微信有**两套**扫码：要 redirect_uri 白名单的「网站应用」，和**不需要白名单**的「扫码 SDK」。
-掌瓦用的是后者，而且它的 `sdk_ticket` 由掌瓦自己的接口发放、免鉴权 —— 所以这条路
-不需要你提供任何 appid / secret / 域名，直接就能扫。
-
-```
-get_sdk_ticket → 签名 → sdk/qrconnect 出码 → 长轮询拿 code → login_by_wechat 换凭证
-```
-
-### QQ（需要浏览器）
-
-QQ 的授权页只能用真浏览器跑：页面里的 JS 自己完成授权，最后把 `access_token`
-放在 `auth://tauth.qq.com/#…` 这个非 http 回调里，我们在旁边监听就能拿到。
 
 **不用配路径**：插件会自己去找系统浏览器（`/usr/bin/chromium`、
 `/usr/bin/google-chrome`、macOS 的 `/Applications/Google Chrome.app/…` 等十来个常见位置），
