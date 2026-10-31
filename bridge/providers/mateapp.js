@@ -24,6 +24,9 @@
  *   掌瓦给的是「游戏内自研指标」，跟 Riot 官方 API 不是一套：
  *     · `score`        = ACS（平均战斗得分），不是比分。列表里**没有比分**，
  *                        只有详情页 `winning_games/failed_games` 能算出 13-11。
+ *                        ⚠️ 只在**有回合**的模式里是均值；团队乱斗 / 死斗这类
+ *                        没有回合的模式，同一个字段是「本局总分」（实测一场
+ *                        34/14/5 的乱斗给 12234）。取值统一走 `acsOf()`。
  *     · `kill_head`    = 精准击败**率**（`22.0` 就是 22%），不是爆头击杀数。
  *     · `kda_score`    = KDA（(击杀+助攻)/死亡）。
  *     · `part`         = 该特工的**场次**（拿 27 场 × 20 分钟 ≈ 9 小时，
@@ -728,6 +731,9 @@ async function attachRanks (list, rows, config, sceneVars = {}) {
       item.deaths = num(me.death)
       item.assists = num(me.assist)
     }
+    // ACS 同样以记分板为准（列表行有时是「整局总分」）。取不到就保留列表值
+    const acs = acsOf(item.mode, me.score)
+    if (acs) item.acs = acs
   })
 }
 
@@ -1348,6 +1354,28 @@ function resultOf (title) {
   return RESULT_OF[text] || (/胜/.test(text) ? 'win' : /负|败/.test(text) ? 'lose' : 'draw')
 }
 
+/**
+ * `score` / 记分板 `score` 取 ACS —— **只有在「按回合打」的模式里成立**。
+ *
+ * 掌瓦把两种东西塞进了同一个字段：
+ *   · 竞技 / 排位 / 普通 / 快速：`score` = 平均每回合战斗得分（ACS，150~500）
+ *   · 团队乱斗 / 死斗 / 斗牛 / 团队激战：这些模式**没有回合**，
+ *     字段变成「本局总得分」（实测一场 34/14/5 的乱斗 = 12234）
+ *
+ * 直接拿后者当 ACS，会把「最近五场均值」「趋势条」全部带飞 —— 之前就是这么
+ * 显示成 ACS 12234 的。这里按模式名排除，再用数值上限兜一道（正常 ACS
+ * 天花板约 600，破千一定不是均值），取不到就返回 0，插件侧会显示「—」。
+ */
+const NO_ROUND_MODE = /乱斗|死斗|斗牛|激战|热斗|训练|靶场/
+
+function acsOf (modeName, value) {
+  const v = num(value)
+  if (!(v > 0)) return 0
+  if (NO_ROUND_MODE.test(String(modeName || ''))) return 0
+  if (v > 1000) return 0
+  return v
+}
+
 const accountOf = (ctx) => {
   const name = ctx.name || ctx.account
   return {
@@ -1454,9 +1482,12 @@ const MAPPING = {
     const seasonName = (raw?.overview?.type_list || [])
       .find(x => /赛季/.test(x?.title || ''))?.content || ''
 
-    // 趋势条：用最近几场的 ACS（掌瓦列表里的 score 就是 ACS，不是比分）
+    // 趋势条：用最近几场的 ACS（有回合的模式里 `score` 就是 ACS，不是比分；
+    // 乱斗/死斗那种没有回合的模式会被 acsOf 过滤掉，别拿总分去撑柱子）
     const recent = (raw?.recent?.battle_list || []).slice(0, 10).reverse()
-    const acsValues = recent.map(r => num(r.score)).filter(v => v > 0)
+    const acsValues = recent
+      .map(r => acsOf(splitContent(r.content).mode, r.score))
+      .filter(v => v > 0)
     const min = Math.min(...acsValues)
     const max = Math.max(...acsValues)
     const trend = acsValues.map((value, i) => ({
@@ -1580,7 +1611,7 @@ const MAPPING = {
         deaths,
         assists,
         kd: num(r.kda_score),
-        acs: num(r.score),
+        acs: acsOf(mode, r.score),
         // 下面几条由 attachRanks() 从记分板回填，这里先占位
         adr: 0,
         headshotRate: 0,

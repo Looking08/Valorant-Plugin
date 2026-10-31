@@ -108,19 +108,26 @@ if (confirmed) {
   console.log('🎉 登录成功')
   console.log('   profile:', JSON.stringify(confirmed.profile))
   const credential = manager.sessions.get(started.sessionId)?.credential
+  /**
+   * ⚠️ `type` 必须带上：provider 用它写 `source`（scan:qq / scan:wx）。
+   * 漏了会落成裸 `scan`，事后排查「这份凭证是扫出来的还是抓包导的」就分不清了。
+   * 正常走网关时由 session.commit() 自动传，这个脚本是自己调的，得手动补。
+   */
+  const sessionType = manager.sessions.get(started.sessionId)?.type || 'qq'
   if (!credential?.cookie) {
     console.log('⚠️  适配器没给出 cookie，没法落库')
   } else {
     const { mateappProvider } = await import('../bridge/providers/mateapp.js')
     try {
-      const saved = await mateappProvider.saveLogin({ user: USER, credential })
+      const saved = await mateappProvider.saveLogin({ user: USER, credential, type: sessionType })
       console.log(`💾 已落库：bridge/accounts/${USER}.json`)
       console.log('   role:', JSON.stringify(saved?.role || {}))
       const account = await mateappProvider.getAccount({ query: '', user: USER })
       console.log(`📋 账号：${account.name}（${account.puuid}）`)
       const result = await mateappProvider.getMatches({ account: '', count: 3, user: USER })
       for (const m of result?.list || []) {
-        console.log(`   · ${m.mapName} | ${m.agentName} | ${m.kills}/${m.deaths}/${m.assists} | ACS ${m.acs}`)
+        // 乱斗/死斗这类没有回合的模式，掌瓦不给 ACS，这里如实显示「—」
+        console.log(`   · ${m.mapName} | ${m.agentName} | ${m.kills}/${m.deaths}/${m.assists} | ACS ${m.acs || '—'}`)
       }
     } catch (error) {
       console.log(`❌ 落库/查询失败 [${error.code || 'ERR'}]：${error.message}`)

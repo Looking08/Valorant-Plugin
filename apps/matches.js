@@ -177,7 +177,9 @@ export class ValorantMatches extends plugin {
         wins: summary.wins ?? list.filter(i => /win/.test(i.cls)).length,
         losses: summary.losses ?? list.filter(i => /lose/.test(i.cls)).length,
         winRateText: pct01(summary.winRate),
-        acs: round(summary.acs, 0),
+        // 全是乱斗/死斗这种没有回合的模式时，acs 会被数据源归零 ——
+        // 显示「—」比显示 0 诚实
+        acs: summary.acs ? round(summary.acs, 0) : '—',
         kd: round(summary.kd, 2)
       },
       hasMore: !!summary.hasMore

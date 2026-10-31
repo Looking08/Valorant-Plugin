@@ -294,6 +294,43 @@ docker cp TRSS_AllBot:/tmp/gw-wx.jpg ./qr.jpg && xdg-open qr.jpg  # Linux
 能把凭证按人落库、能拿这份凭证查到真实战绩。也就是插件里 `#瓦微信登录` 那条路，
 除了「出图发给 QQ 群」这一段（要等云崽起来），其余全跑通了。
 
+### 5.3 QQ 扫码实测（真机扫，2026-11-01 02:25:41）
+
+微信那条通了之后 QQ 一开始**怎么扫都报「二维码已过期」**（详见 6.4），修完之后的实测：
+
+```
+[qq-page] ptqrlogin → 码 67   二维码认证中。
+[qq-page] ptqrlogin → 码 0
+[qq-page] 拿到授权凭证（request）
+   [02:25:41] confirmed — 登录成功：守记
+🎉 登录成功
+   profile: {"nickname":"","userId":"JA-22816fbc55e34036-a54e4561a2cf09a2","roleName":"守记","tierText":"白银I"}
+💾 已落库：bridge/accounts/qqcli.json
+📋 账号：守记（JA-22816fbc55e34036-a54e4561a2cf09a2）
+```
+
+| 项 | 值 |
+| --- | --- |
+| 角色 / 段位 | 守记 / 白银 I |
+| `userId` | `JA-22816fbc55e34036-a54e4561a2cf09a2` |
+| cookie | **547 字符**，`clientType/appid/acctype/openid/access_token/userId/accountType/tid` 八段（`tid` 占 256 位） |
+| scene | **195 字符**，`v3_` 开头（比微信那份长，两边不是同一套 scene） |
+| 落库 | `bridge/accounts/qqcli.json`，1197 B，权限 `600` |
+| source | `scan:qq` |
+
+顺手修掉的两个真实缺陷，都是这次实测才暴露出来的：
+
+1. **`source` 被写成裸 `scan`**。`saveLogin()` 里明明写了 `scan:${type}`，但只要
+   **调用方漏传 `type`** 就会退化成 `scan`：`tools/qq-live.mjs` 是自己直接调
+   provider 的（没走 `session.commit()`），漏了 `type`。已补，并验证落库变成
+   `scan:qq`。走网关的路径本来就带 `type`，不受影响。
+2. **团队乱斗的 ACS 显示成 12234**。`career/record/list` 的 `score` 只在
+   **有回合**的模式里是「平均战斗得分」；乱斗 / 死斗这些没有回合的模式里，它是
+   **本局总得分**（实测那场 34/14/5 → `score=12234`，记分板里同一行也是 12234，
+   两边同源）。现在统一走 `acsOf()`：模式名命中「乱斗/死斗/斗牛/激战/热斗/训练/靶场」
+   直接判为「无 ACS」，再用「> 1000 一定不是均值」兜一道，取不到就返回 0，
+   插件侧渲染成 `—`，也不参与均值。
+
 ---
 
 ## 6. 容器专属的坑（清单）
@@ -304,6 +341,8 @@ docker cp TRSS_AllBot:/tmp/gw-wx.jpg ./qr.jpg && xdg-open qr.jpg  # Linux
 | 打开页面卡死 / 浏览器莫名崩溃 | `/dev/shm` 只有 64 MB | 已含 `--disable-dev-shm-usage`；或 `docker run --shm-size=1g` |
 | 出图全是方块 | 没 CJK 字体 | 见 4.3 |
 | 「网关没有挂载 微信 扫码适配器」 | 网关跑着老代码 | 重启网关，看横幅 |
+| 手机提示「登录失败，二维码已过期」，但图能扫到 | 取到的是 `ptqrlogin` 首次返回 68 那一刻的作废码，见 6.4 | 等码回到 66/67 再交付 |
+| 乱斗/死斗的战绩显示 ACS 12234 | `record/list` 的 `score` 在没有回合的模式里是「本局总分」 | 已由 `acsOf()` 归零，显示 `—` |
 | 端口占不住 / 起来就退 | 旧的 `server.mjs` 还在 | `pkill -f bridge/server.mjs` 再起 |
 | 容器外连不上 7820 | 只监听 `127.0.0.1` | `docker run -p 127.0.0.1:7820:7820`，建议仍绑回环 |
 | 重建容器后登录态没了 | `bridge/accounts/` 在容器内 | 挂卷：`-v valorant-accounts:/root/TRSS_AllBot/TRSS-Yunzai/plugins/Valorant-Plugin/bridge/accounts` |
@@ -491,6 +530,48 @@ else msgs = await this.makeRawMarkdownMsg(data, msg)   // ← 默认，图片变
 
 > 如果你**有**公网域名，也可以不改 legacy，改把 `server.yaml` 的 `url` 指到公网地址
 > （记得放行 2536 端口）。两条路选一条，混着用会互相打架。
+
+### 6.4 QQ 扫码：「登录失败，二维码已过期」——拿到的是作废码
+
+现象很反直觉：**二维码图片能正常发出来、手机也能扫到，但一确认就提示「二维码已过期」**，
+重发一张还是一样。同一套浏览器、同一套参数，微信那条路却没问题。
+
+真相在 `ptqrlogin` 的响应里。用 `page.on('response')` 把页面自己发的轮询结果录下来：
+
+```
+ptqrlogin → ptuiCB('68', ...)   # 68 = 本次登录已被拒绝
+ptqrlogin → ptuiCB('66', ...)   # 66 = 码未失效
+ptqrlogin → ptuiCB('66', ...)
+```
+
+**页面第一次轮询拿到的是 68，随后它自己静默换了一张新码，之后才稳定回 66。**
+早一步（截图 / 直接抓 `ptqrshow`）拿到的正好是 68 那一刻已经作废的那张。
+
+修法两条，缺一不可：
+
+1. **别截图，从网络响应里收原图**：监听 `ptqrshow` 的 response，把 PNG 字节存下来
+   （`captureQR` 的优先级：网络原图 → canvas `data:` → 截图）。
+   ⚠️ 判断是不是真图要用**魔数**（`89 50 4E 47` / `FF D8`），别看体积 ——
+   同一 URL 二次请求只回 ~390 B，那就是 264×264 的真 PNG，按「体积小=占位图」丢掉会白等。
+2. **等码「变活」再交付**：`waitAlive()` 轮询到 `66`/`67` 才把二维码给用户，
+   之后固定等 `1200ms` 再取图。
+
+还有一个坑：**页面不会在二维码过期后改文案**（实测出码 154 秒后仍写「使用QQ手机版扫码授权登录」），
+所以换码不能等它喊失效，要按时间主动换 —— `refreshQR({ force: true })` 整页 reload，
+`tools/qq-live.mjs` 里由 `QR_LIFE`（默认 100 秒）驱动。
+
+配套脚本：
+
+```bash
+# 现场版：出码 → 守着 → 到点自动换码 → 扫完落库并查 3 场
+LOGIN_TTL=1800 WAIT_SECONDS=1800 QR_LIFE=115 LOGIN_USER=qqcli LOGIN_DEBUG=1 node tools/qq-live.mjs
+
+# 不拿手机也能判一张码的死活：用页面 cookie + hash33(qrsig) 直接打 ptqrlogin
+node tools/qq-qr-probe.mjs
+
+# 给二维码补白边 + 底部时间戳（静区要 4 个模块，截图时 pad 给 40 CSS px）
+python3 tools/stamp-qr.py /tmp/qq-live-1.png
+```
 
 ---
 
