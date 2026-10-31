@@ -703,10 +703,13 @@ async function attachRanks (list, rows, config, sceneVars = {}) {
     // 比分：列表行的 round_won/round_fail 恒为 0，只有记分板 detail 里是真的
     const won = num(d.winning_games)
     const lost = num(d.failed_games)
+    // 乱斗 / 死斗这类没有回合的模式，后面几项口径全部不成立（见下面的注释）
+    const noRound = isNoRound(item.mode)
     if (won || lost) {
       item.score = `${won}-${lost}`
-      // 回合数掌瓦没单独给，胜+负就是这局打了多少回合
-      item.roundsPlayed = won + lost
+      // 回合数掌瓦没单独给，胜+负就是这局打了多少回合。
+      // ⚠️ 但乱斗/死斗里这两个数是**击杀比分**（100-74），拿它当回合数会冒出「174 回合」
+      if (!noRound) item.roundsPlayed = won + lost
     }
 
     // 时长：掌瓦给的是 "36m25s" 这种字符串
@@ -717,8 +720,9 @@ async function attachRanks (list, rows, config, sceneVars = {}) {
 
     const me = hit.me
     if (!me) return
-    // ⚠️ damage 是「回合伤害」不是 ADR，但掌瓦就给这一个口径，标清楚就行
-    if (num(me.damage)) item.adr = num(me.damage)
+    // ⚠️ damage 是「回合伤害」不是 ADR，但掌瓦就给这一个口径，标清楚就行。
+    //    没有回合的模式里它是**整局总伤害**（实测一场乱斗 5805），按 ADR 展示会离谱
+    if (num(me.damage) && !noRound) item.adr = num(me.damage)
     if (rate(me.head_shots_rate)) item.headshotRate = rate(me.head_shots_rate)
     if (num(me.first_kill_count)) item.firstBloods = num(me.first_kill_count)
     if (num(me.plant_count)) item.plants = num(me.plant_count)
@@ -1368,10 +1372,15 @@ function resultOf (title) {
  */
 const NO_ROUND_MODE = /乱斗|死斗|斗牛|激战|热斗|训练|靶场/
 
+/** 这个模式是不是「没有回合」的那一类（乱斗/死斗…） */
+function isNoRound (modeName) {
+  return NO_ROUND_MODE.test(String(modeName || ''))
+}
+
 function acsOf (modeName, value) {
   const v = num(value)
   if (!(v > 0)) return 0
-  if (NO_ROUND_MODE.test(String(modeName || ''))) return 0
+  if (isNoRound(modeName)) return 0
   if (v > 1000) return 0
   return v
 }

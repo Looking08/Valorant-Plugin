@@ -330,6 +330,8 @@ docker cp TRSS_AllBot:/tmp/gw-wx.jpg ./qr.jpg && xdg-open qr.jpg  # Linux
    两边同源）。现在统一走 `acsOf()`：模式名命中「乱斗/死斗/斗牛/激战/热斗/训练/靶场」
    直接判为「无 ACS」，再用「> 1000 一定不是均值」兜一道，取不到就返回 0，
    插件侧渲染成 `—`，也不参与均值。
+   顺带把同源的另两项也拦了：`ADR`（乱斗的 `damage` 是整局总伤害 5805，不是每回合）
+   和回合数（`winning_games + failed_games` = 100+74，那是击杀比分，会冒出「174 回合」）。
 
 ---
 
