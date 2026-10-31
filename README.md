@@ -21,7 +21,7 @@
 
 ## 安装
 
-支持云崽系（Yunzai V3 / TRSS-Yunzai / Miao 等），**目录名`Valorant-Plugin`**
+只支持云崽系（Yunzai V3 / TRSS-Yunzai / Miao 等），**目录名必须是 `Valorant-Plugin`**，代码里写死了。
 
 ```bash
 cd ./plugins
@@ -37,7 +37,7 @@ cd ./Valorant-Plugin && pnpm install
 加载失败：0 个
 ```
 
-之后升级用 `#瓦更新`，不用再进目录。
+之后升级用 `#瓦更新`，不用再进目录（详见下面的「升级」）。
 
 <details>
 <summary>docker 跑 TRSS_AllBot 的看这里</summary>
@@ -55,6 +55,44 @@ pacman -S --needed noto-fonts-cjk   # Debian 系：apt install fonts-noto-cjk
 完整步骤见 [`docs/Docker云崽部署与扫码登录.md`](docs/Docker云崽部署与扫码登录.md)。
 </details>
 
+## 升级
+
+**下面这条能用的前提只有一个：插件是用 `git clone` 装进 `plugins/` 的。**
+
+```
+#瓦更新          ← 只更新本插件
+#瓦更新日志       ← 看看这次更了啥
+```
+
+`#瓦更新` 等价于 `#更新Valorant-Plugin`，走的是云崽自带的更新模块：进插件目录 `git pull`，
+有更新就自动重启，重启完新代码生效。**不用手动重启，也不用碰服务器。**
+
+云崽的 `#全部更新` **也能更到**（它是遍历 `plugins/` 下所有带 `.git` 的目录挨个 `git pull`），
+但那条会把云崽本体一起更新，慢、日志刷屏、还可能顺带把你别的插件也动了。
+只想更这个插件就别用它。
+
+⚠️ 三种装法里，只有第一种能一条指令升级：
+
+| 怎么装的 | `#瓦更新` / `#全部更新` | 怎么升级 |
+| --- | --- | --- |
+| `git clone` 到 `plugins/Valorant-Plugin` | ✅ 能 | 发指令 |
+| `npm i github:Looking08/Valorant-Plugin` | ❌ 扫不到（在 `node_modules` 里，不在 `plugins/`） | 重新 `pnpm add` |
+| 下载 zip 解压进去 | ❌ 没有 `.git`，会被静默跳过（不报错，最坑） | 删了重新 clone |
+
+只有两种情况下 `git pull` 会失败：
+
+- **你手动改过插件里的代码**（不是配置）。发 `#瓦强制更新` 会 `git reset --hard origin/main`，改动直接丢。
+  想留就先 `git diff > my.patch`。
+- **机器连不上 github**。会回一句「远程仓库连接错误」，配好代理再试。
+
+可以放心的是：登录态、网关配置、缓存这些**跑起来才会生成的文件全在 `.gitignore` 里**
+（`bridge/accounts/`、`bridge/mate.json`、`bridge/.state/`、`config/config/`、`data/`），
+所以插件跑得再久，仓库也是干净的，升级不会跟你自己的数据打架。
+
+> 有一种更新要补一步手动操作：如果这次 `git pull` 的输出里出现了 `package.json`，
+> 说明依赖变了，得进插件目录跑一次 `pnpm install`。否则不用管 ——
+> 云崽那条自动 `pnpm install` 是跑在**云崽根目录**的，管不到插件自己的 `node_modules`。
+
 ## 三分钟上手
 
 1. 发 `#瓦微信登录`，手机微信扫机器人发来的码，点「确认」
@@ -62,6 +100,9 @@ pacman -S --needed noto-fonts-cjk   # Debian 系：apt install fonts-noto-cjk
 3. 想查别人的：`#瓦战绩 昵称`（**只能查跟你同过场的人**）
 
 登录态硬 3 天过期，到期重扫一次就行；`#瓦登录状态` 随时看还能不能用。
+
+> 从 ALemonJS 过来的用户注意：本仓库**已不再提供 ALemonJS 入口**（`alemon.js`、`adapter/alemon/` 均已移除），
+> 现在只维护云崽这一条线。需要旧版可以 `git log` 找到移除前的那次提交。
 
 ## 起数据源
 
@@ -102,6 +143,7 @@ cp bridge/providers/mateapp.example.json bridge/mate.json
 > 那种情况插件会直接把该执行哪条命令打给你。
 
 ⚠️ `bridge/mate.json`、`bridge/accounts/`、`config/config/`、`data/` 都在 `.gitignore` 里，**不会随仓库分发**。
+理由很直白：那几个文件里是你的登录 cookie，谁拿到谁就能查你的号。
 
 ## 指令
 
@@ -137,6 +179,20 @@ cp bridge/providers/mateapp.example.json bridge/mate.json
 | QQ 扫码 | `#瓦扫码登录` | 网关机器上有个 Chrome/Chromium | ✅ 要浏览器，约 10 秒出码 |
 | 抓包导入 | `#瓦导入` | 手机上抓一次包 | ✅ 最保险，能用 3 天 |
 
+### 微信（推荐，零配置）
+
+微信有**两套**扫码：要 redirect_uri 白名单的「网站应用」，和**不需要白名单**的「扫码 SDK」。
+掌瓦用的是后者，而且它的 `sdk_ticket` 由掌瓦自己的接口发放、免鉴权 —— 所以这条路
+不需要你提供任何 appid / secret / 域名，直接就能扫。
+
+```
+get_sdk_ticket → 签名 → sdk/qrconnect 出码 → 长轮询拿 code → login_by_wechat 换凭证
+```
+
+### QQ（需要浏览器）
+
+QQ 的授权页只能用真浏览器跑：页面里的 JS 自己完成授权，最后把 `access_token`
+放在 `auth://tauth.qq.com/#…` 这个非 http 回调里，我们在旁边监听就能拿到。
 
 **不用配路径**：插件会自己去找系统浏览器（`/usr/bin/chromium`、
 `/usr/bin/google-chrome`、macOS 的 `/Applications/Google Chrome.app/…` 等十来个常见位置），
