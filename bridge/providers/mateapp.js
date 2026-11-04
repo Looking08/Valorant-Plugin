@@ -144,6 +144,7 @@ function varsOf (config, extra = {}) {
   const role = config.role || {}
   const login = config.login || {}
   const defaults = config.defaults || {}
+  const season = seasonOf(config?.__user)
   return {
     uid: role.uid || '',
     roleId: role.roleId || role.uid || '',
@@ -153,8 +154,13 @@ function varsOf (config, extra = {}) {
     account: role.uid || '',
     scene: login.scene || '',
     sceneDetail: login.sceneDetail || login.scene || '',
-    seasonId: defaults.seasonId || seasonOf(config?.__user) || '255',
-    queueId: defaults.queueId || '255',
+    // ⚠️ season_id 和 queue_id 必须**成对**、且指向同一个口径。
+    //    只给赛季不给模式，掌瓦按「所有模式」算；两个都不给就是「生涯 + 所有模式」，
+    //    数字跟面板（本赛季）差两三个数量级 —— 枪械/特工/地图三条都会踩。
+    //    赛季号取不到时才整体退回生涯(255)，并且让调用方能看出来（见 weapons() 的
+    //    seasonResolved），别把生涯数据标成「当前赛季」。
+    seasonId: defaults.seasonId || season?.seasonId || '255',
+    queueId: defaults.queueId || season?.queueId || '255',
     gameMode: defaults.gameMode || '101001',
     season: '',
     mode: '255',
@@ -547,20 +553,40 @@ export async function callEndpoint (name, extra = {}, preset = null) {
  */
 const seasonState = new Map()
 
+/**
+ * 从 seasonoverview 里记下「当前赛季 + 对应的模式」。
+ *
+ * 之前只记赛季号、模式写死 255（所有模式），结果枪械/特工/地图跟面板永远不是一个口径；
+ * 现在从 mode_list 里取「竞技模式」（101001），取不到才退回所有模式。
+ */
 function rememberSeason (overview, user) {
-  const keys = (overview?.season_list || [])
-    .map(x => String(x?.key ?? ''))
-    .filter(k => k && k !== '255')
-  if (!keys.length) return
+  const seasons = (overview?.season_list || [])
+    .map(x => ({ key: String(x?.key ?? ''), title: String(x?.title || '') }))
+    .filter(s => s.key && s.key !== '255')
+  if (!seasons.length) return
 
-  const numeric = keys.map(Number).filter(n => Number.isFinite(n))
-  const value = numeric.length ? String(Math.max(...numeric)) : keys[keys.length - 1]
-  seasonState.set(String(user || ''), { value, at: Date.now() })
+  const numeric = seasons.filter(s => Number.isFinite(Number(s.key)))
+  const current = numeric.length
+    ? numeric.reduce((a, b) => (Number(b.key) > Number(a.key) ? b : a))
+    : seasons[seasons.length - 1]
+
+  const modes = overview?.mode_list || []
+  const competitive = modes.find(m => String(m?.title || '').includes('竞技'))
+
+  seasonState.set(String(user || ''), {
+    value: {
+      seasonId: current.key,
+      title: current.title,
+      queueId: String(competitive?.key || '255')
+    },
+    at: Date.now()
+  })
 }
 
+/** 取「当前赛季 + 模式」，拿不到返回 null（调用方据此判断是不是退回了生涯） */
 function seasonOf (user) {
   const hit = seasonState.get(String(user || ''))
-  return hit && Date.now() - hit.at < 30 * 60 * 1000 ? hit.value : ''
+  return hit && Date.now() - hit.at < 30 * 60 * 1000 ? hit.value : null
 }
 
 async function ensureSeason (config) {
@@ -1775,20 +1801,21 @@ const MAPPING = {
    *                                     image_url, kill, kill_head("22.0" = 率),
    *                                     kill_round(每回合击杀), kill_farthest(米) }
    *
-   * 只有四个数，没有总命中/总伤害 —— 所以下面把「击杀」当命中数来凑
-   * `headshots / bodyshots`（模板要的是「爆头/身体/腿」三连的比例），
-   * 算出来的爆头率跟上游的 `kill_head` 完全一致，因为分子分母同源。
+   * ⚠️ 上游只给这四个数：**没有总命中、没有总伤害、没有使用回合**。
+   *    以前拿「击杀 × 爆头率」拆成爆/身/腿、把击杀当命中、用 kill_round 反除回合，
+   *    都是在编数：卡片上会出现「腿 0」「伤害 —」「使用回合 2240」这种一看就不对的东西，
+   *    而且低击杀时 round(1 × 16.7%) = 0，爆头率会直接变 0%。
+   *    现在原样透传上游口径，缺的就是缺的，模板那边不展示。
    */
   weapons (raw, ctx, config) {
     const rows = raw?.list || []
+    const season = seasonOf(config?.__user)
+    // 手工在 mate.json 里钉死赛季号时，seasonState 是空的，别误报成「生涯」
+    const pinned = String(config?.defaults?.seasonId || '')
 
     const list = rows.map(w => {
       const id = String(w.id || '')
       const info = weaponOf(id, config)
-      const kills = num(w.kill)
-      const headRate = rate(w.kill_head)
-      const headshots = Math.round(kills * headRate)
-      const perRound = num(w.kill_round)
 
       return {
         // 有 uuid 就填 uuid：插件拿它去 valorant-api 查图标/分类/价格，一箭三雕
@@ -1796,21 +1823,19 @@ const MAPPING = {
         legacyId: id,
         name: info.name || w.name || `武器 ${id}`,
         icon: w.image_url || '',
-        kills,
-        headshots,
-        bodyshots: Math.max(0, kills - headshots),
-        legshots: 0,
-        // 上游不给枪械总伤害，模板会显示「—」
-        damage: 0,
-        roundsUsed: perRound > 0 ? Math.round(kills / perRound) : 0,
-        killsPerRound: perRound,
+        kills: num(w.kill),
+        // 上游的 kill_head 就是「精准击败率」（16.4 = 16.4%），直接用，别拿它反算再除回去
+        headRate: rate(w.kill_head),
+        killsPerRound: num(w.kill_round),
         farthest: num(w.kill_farthest)
       }
     }).sort((a, b) => b.kills - a.kills)
 
     return {
       account: accountOf(ctx),
-      season: '当前赛季',
+      // 赛季号没取到就是生涯口径，如实标出来 —— 别把生涯数字写成「当前赛季」
+      season: season?.title || (pinned ? `赛季 ${pinned}` : '生涯'),
+      seasonResolved: Boolean(season) || Boolean(pinned),
       list
     }
   }

@@ -1,11 +1,15 @@
 /**
  * 枪械熟练度（`#瓦枪械` / `#瓦枪械熟练度`）。
  *
- * 和平精英那条同名功能（marksmanshipSkills.js）是按枪械类型筛选 + 看使用时长/击杀/爆头率，
- * 这里做成同一思路：数据源给「每把枪的击杀、命中部位、伤害」，插件算出
- * **爆头率 / 每发伤害 / 每回合击杀**，再按你选的口径排一遍序。
+ * 掌瓦的 `performance/gun` 只给四个数：**击杀 / 精准击败率（爆头率）/ 每回合击杀 / 最远击败**。
+ * 这里就只展示这四个（外加图标、分类、价格）。
  *
- * 排序口径：`#瓦枪械 击杀`（默认）/ `爆头` / `伤害` / `命中`
+ * 早先的版本想凑成「爆头/身体/腿」+「总伤害」+「使用回合」，于是把击杀当命中数拆、
+ * 把 damage 写死 0、用 kills ÷ kill_round 反推回合 —— 那三列全是编出来的，
+ * 低击杀时还会 `round(1 × 16.7%) = 0` 把爆头率算成 0%。现在一律以「上游给什么就显示什么」
+ * 为准，缺的一列都不画。
+ *
+ * 排序口径：`#瓦枪械 击杀`（默认）/ `爆头` / `每回合` / `最远`
  */
 import {
   getWeapons,
@@ -22,32 +26,46 @@ import {
   replyImage
 } from '#utils'
 
-/** 排序关键字 → { 取值函数, 说明 } */
-const SORTERS = {
-  kills: { get: w => w.kills, label: '击杀数' },
-  击杀: { get: w => w.kills, label: '击杀数' },
-  headshot: { get: w => w.headshotRate, label: '爆头率' },
-  爆头: { get: w => w.headshotRate, label: '爆头率' },
-  damage: { get: w => w.damage, label: '总伤害' },
-  伤害: { get: w => w.damage, label: '总伤害' },
-  hit: { get: w => w.hits, label: '命中次数' },
-  命中: { get: w => w.hits, label: '命中次数' },
-  rounds: { get: w => w.roundsUsed, label: '使用回合' },
-  回合: { get: w => w.roundsUsed, label: '使用回合' }
-}
+/**
+ * 排序口径。
+ *
+ * `keys` 里挑「在指令里出现、且最长」的那个来定口径 —— 否则 `每回合击杀`
+ * 会被 `击杀` 先命中，用户以为换了口径其实没换（老版本就是这个毛病）。
+ */
+const SORTERS = [
+  { keys: ['kills', 'kill', '击杀'], get: w => w.kills, label: '击杀数' },
+  { keys: ['headshot', 'hs', '爆头'], get: w => w.headRate, label: '爆头率' },
+  { keys: ['perround', '每回合', '回合击杀'], get: w => w.killsPerRound, label: '每回合击杀' },
+  { keys: ['farthest', 'far', '最远', '距离'], get: w => w.farthest, label: '最远击杀' }
+]
+
+const DEFAULT_SORT = SORTERS[0]
+
+/** 已经删掉的口径 —— 用户按老习惯发过来时给句解释，别默默当账号名去解析 */
+const DROPPED = ['伤害', '命中']
 
 /** 武器分类 → 中文 */
 const CATEGORY = {
   sidearm: '手枪',
   smg: '冲锋枪',
+  shotgun: '霰弹枪',
   rifle: '步枪',
   sniper: '狙击枪',
   heavy: '重武器',
   melee: '近战'
 }
 
-/** 命中部位三连用的短数字：1105 → 1.1k，917 → 917（口径统一，别一格里混千分位） */
-const shortNum = v => (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v))
+/** 挑排序口径：命中的关键字越长越优先 */
+function pickSort (raw) {
+  let best = null
+  for (const item of SORTERS) {
+    for (const key of item.keys) {
+      if (!raw.includes(key)) continue
+      if (!best || key.length > best.key.length) best = { item, key }
+    }
+  }
+  return best || { item: DEFAULT_SORT, key: '' }
+}
 
 export class ValorantWeapons extends plugin {
   constructor () {
@@ -67,8 +85,20 @@ export class ValorantWeapons extends plugin {
     const cfg = display()
 
     // 参数里可能混了排序关键字和账号，先把排序关键字挑出来
-    let sortKey = Object.keys(SORTERS).find(k => raw.includes(k)) || 'kills'
-    const rest = sortKey === 'kills' ? raw : raw.replace(sortKey, ' ').trim()
+    const sort = pickSort(raw)
+    if (!sort.key) {
+      const dropped = DROPPED.find(k => raw.includes(k))
+      if (dropped) {
+        await e.reply([
+          `掌上无畏契约不提供「${dropped}」这项数据，算了也是错的。`,
+          '',
+          '能排的口径：击杀 / 爆头 / 每回合 / 最远',
+          '例：#瓦枪械 每回合'
+        ].join('\n'))
+        return true
+      }
+    }
+    const rest = sort.key ? raw.replace(sort.key, ' ').trim() : raw
 
     let account
     try {
@@ -102,72 +132,74 @@ export class ValorantWeapons extends plugin {
       return true
     }
 
-    // 补齐名字/图标 + 算出派生指标
+    // 补齐名字/图标/分类，顺便把各数据源的字段归一（mateapp / demo 形状不一样）
     const enriched = await Promise.all(rawList.map(async w => {
       const info = await weaponOf(w.weaponId)
-      const hits = (w.headshots || 0) + (w.bodyshots || 0) + (w.legshots || 0)
       const categoryKey = String(info.category || '').split('::').pop().toLowerCase()
+      const kills = w.kills || 0
+      // 上游直接给爆头率就用它（掌瓦的 kill_head）；只有给命中部位的数据源才反算
+      const headRate = w.headRate != null
+        ? w.headRate
+        : (w.hits ? (w.headshots || 0) / w.hits : 0)
+
       return {
         name: w.name || info.displayName || w.weaponId,
         // 数据源自带图标时优先用（掌瓦的图在 gtimg 上，valorant-api 不一定收录新枪）
         icon: w.icon || info.displayIcon || '',
         category: CATEGORY[categoryKey] || w.categoryText || '',
         cost: info.shopData?.cost ?? null,
-        kills: w.kills || 0,
-        headshots: w.headshots || 0,
-        bodyshots: w.bodyshots || 0,
-        legshots: w.legshots || 0,
-        hits,
-        headshotRate: hits ? (w.headshots || 0) / hits : 0,
-        damage: w.damage || 0,
-        damagePerHit: hits ? (w.damage || 0) / hits : 0,
-        roundsUsed: w.roundsUsed || 0,
-        killsPerRound: w.roundsUsed ? (w.kills || 0) / w.roundsUsed : 0
+        kills,
+        headRate,
+        killsPerRound: w.killsPerRound != null
+          ? w.killsPerRound
+          : (w.roundsUsed ? kills / w.roundsUsed : 0),
+        farthest: w.farthest != null ? w.farthest : null
       }
     }))
 
-    enriched.sort((a, b) => SORTERS[sortKey].get(b) - SORTERS[sortKey].get(a))
+    enriched.sort((a, b) => (sort.item.get(b) || 0) - (sort.item.get(a) || 0))
     const list = enriched.slice(0, cfg.weaponsDefault)
 
-    // 进度条宽度按 TOP1 归一化，同样是为了让模板里不出现数值运算
-    const maxKills = Math.max(1, list[0]?.kills || 1)
+    // 进度条一律按「全部枪里的最高击杀」归一化 —— 换成按爆头排序时，
+    // 第一名的击杀可能只有个位数，按它归一化会让所有条都爆表（老版本就是这样）。
+    const maxKills = Math.max(1, ...enriched.map(w => w.kills))
     for (const item of list) {
       item.barWidth = Math.max(2, Math.round((item.kills / maxKills) * 100))
       item.icon = await asset(item.icon)
     }
 
     const totalKills = enriched.reduce((s, w) => s + w.kills, 0)
-    const totalDamage = enriched.reduce((s, w) => s + w.damage, 0)
-    const totalHits = enriched.reduce((s, w) => s + w.hits, 0)
-    const totalHead = enriched.reduce((s, w) => s + w.headshots, 0)
+    // 综合爆头率按击杀加权：跟掌瓦面板「精准击败」同一个分母口径
+    const weighted = enriched.reduce((s, w) => s + w.kills * w.headRate, 0)
+    const maxFarthest = enriched.reduce((m, w) => ((w.farthest || 0) > m ? w.farthest : m), 0)
 
     const acc = data.account || {}
 
     await replyImage(e, 'ValorantWeapons', 'weapons.html', {
       account: {
         id: acc.id || account.id,
+        name: acc.name || '',
         region: regionText(acc.region || account.region),
         card: await asset(acc.card?.small || '')
       },
       list: list.map(item => ({
         ...item,
         killsText: thousands(item.kills),
-        hitsText: `${shortNum(item.headshots)}/${shortNum(item.bodyshots)}/${shortNum(item.legshots)}`,
-        headshotText: pct01(item.headshotRate),
-        // 数据源不给总伤害（掌瓦只有击杀/爆头率），显示「—」比显示 0 诚实
-        damageText: item.damage ? thousands(item.damage) : '—',
-        damagePerHitText: item.damagePerHit ? round(item.damagePerHit, 1) : '—',
-        killsPerRoundText: round(item.killsPerRound, 2)
+        headRateText: pct01(item.headRate),
+        killsPerRoundText: round(item.killsPerRound, 2),
+        farthestText: item.farthest ? `${round(item.farthest, 1)}m` : '—'
       })),
-      sortLabel: SORTERS[sortKey].label,
+      sortLabel: sort.item.label,
       summary: {
-        totalKills: thousands(totalKills),
-        totalDamage: totalDamage ? thousands(totalDamage) : '—',
-        headshotText: pct01(totalHits ? totalHead / totalHits : 0),
         kinds: enriched.length,
+        totalKills: thousands(totalKills),
+        headRateText: pct01(totalKills ? weighted / totalKills : 0),
+        farthestText: maxFarthest ? `${round(maxFarthest, 1)}m` : '—',
         best: list[0]?.name || '—'
       },
-      season: data.season || ''
+      season: data.season || '',
+      // 赛季号没取到 = 这里是生涯数据，得说明白，否则又变成「面板和枪械对不上」
+      seasonNote: data.seasonResolved === false ? '本赛季号没取到，上面是生涯数据' : ''
     })
     return true
   }
