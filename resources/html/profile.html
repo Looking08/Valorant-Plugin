@@ -13,9 +13,9 @@
     .trend-col { display: flex; flex-direction: column; align-items: center; gap: 4px; }
     .trend-bar {
       width: 22px; border-radius: 5px 5px 0 0;
-      background: linear-gradient(180deg, #ff6a72, #b8333f);
+      background: var(--accent);
     }
-    .trend-label { font-size: 11px; color: #5f7180; }
+    .trend-label { font-size: 11px; color: var(--text-mute); }
   </style>
 </head>
 <body>
@@ -157,7 +157,7 @@
     <div class="trend">
       {{each trend t}}
       <div class="trend-col">
-        <div class="tiny" style="color:#8b9aa7">{{t.value}}</div>
+        <div class="tiny" style="color:var(--text-dim)">{{t.value}}</div>
         <div class="trend-bar" style="height:{{t.height}}px"></div>
         <div class="trend-label">{{t.label}}</div>
       </div>

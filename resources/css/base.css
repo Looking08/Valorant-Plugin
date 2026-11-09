@@ -1,10 +1,17 @@
 /*
- * 通用样式。
+ * 通用样式 —— 亮色主题。
  *
  * 刻意**不用** Tailwind CDN 之类的外部依赖：机器人所在服务器不一定通外网，
  * 样式库加载失败会让整张图变成一堆裸 HTML —— 自包含 CSS 最稳。
  *
- * 配色沿用 VALORANT 客户端：底色 #0F1923，强调色 #FF4655，胜利青绿、失败红。
+ * 设计约定（2026-11-09 重设计）：
+ *   1. **亮色**：页面 #f4f6f8 浅灰底 + 卡片纯白 + 深灰蓝文字。强调色取 VALORANT
+ *      红但压深到 #d8354a，保证白底上对比度 ≥ 4.5:1（原亮红 #ff4655 在白底只有 3.5）。
+ *   2. **分区靠边框和留白**：section-title 底部一条细分隔线，卡片 1px 实边框，
+ *      不靠阴影/发光区分层次。
+ *   3. **无光特效**：不用 radial-gradient 光晕、不用 box-shadow 发光、
+ *      不用 linear-gradient 渐变条。所有条/点/徽标一律纯色。
+ *   4. 数值一律等宽数字（tabular-nums），标签与数值的层级用字号和字重区分。
  */
 
 /*
@@ -33,19 +40,19 @@
 }
 
 :root {
-  --bg: #0f1923;
-  --bg-soft: #16232e;
-  --panel: #1b2a37;
-  --panel-2: #22333f;
-  --line: #2b3d4c;
-  --text: #ece8e1;
-  --text-dim: #8b9aa7;
-  --text-mute: #5f7180;
-  --accent: #ff4655;
-  --accent-soft: rgba(255, 70, 85, 0.16);
-  --win: #19e5a0;
-  --lose: #ff4655;
-  --gold: #f5d67b;
+  --bg: #f4f6f8;
+  --bg-soft: #eef1f4;
+  --panel: #ffffff;
+  --panel-2: #f0f3f6;
+  --line: #e3e7ec;
+  --text: #1c2733;
+  --text-dim: #5c6b7a;
+  --text-mute: #8b97a3;
+  --accent: #d8354a;
+  --accent-soft: rgba(216, 53, 74, 0.07);
+  --win: #0f9d6c;
+  --lose: #d8354a;
+  --gold: #b07d1a;
 }
 
 * { box-sizing: border-box; }
@@ -64,16 +71,13 @@ body {
 
 #container {
   width: 1180px;
-  padding: 36px 40px 30px;
-  background:
-    radial-gradient(1200px 400px at 15% -10%, rgba(255, 70, 85, 0.16), transparent 60%),
-    radial-gradient(900px 300px at 95% 0%, rgba(12, 232, 232, 0.10), transparent 55%),
-    var(--bg);
+  padding: 32px 36px 26px;
+  background: var(--bg);
 }
 
 /* ---------- 通用块 ---------- */
 .card {
-  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
+  background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 18px 20px;
@@ -83,7 +87,9 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 26px 0 14px;
+  margin: 24px 0 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
   font-size: 19px;
   font-weight: 700;
   letter-spacing: 0.5px;
@@ -122,19 +128,19 @@ body {
   border: 1px solid var(--line);
   border-radius: 16px;
   overflow: hidden;
-  background: var(--bg-soft);
+  background: var(--panel);
 }
 .hero-bg {
   position: absolute;
   inset: 0;
   background-size: cover;
   background-position: center 28%;
-  opacity: 0.32;
+  opacity: 0.10;
 }
 .hero-mask {
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, rgba(11,20,28,0.94) 32%, rgba(11,20,28,0.55) 72%, rgba(11,20,28,0.2));
+  background: linear-gradient(90deg, rgba(255,255,255,0.96) 32%, rgba(255,255,255,0.72) 72%, rgba(255,255,255,0.45));
 }
 .hero-inner {
   position: relative;
@@ -149,7 +155,7 @@ body {
   border-radius: 50%;
   border: 3px solid var(--accent);
   object-fit: cover;
-  background: var(--panel);
+  background: var(--panel-2);
   flex: none;
 }
 .name-row { display: flex; align-items: center; gap: 12px; }
@@ -161,7 +167,7 @@ body {
   color: var(--accent);
   font-size: 14px;
   font-weight: 700;
-  border: 1px solid rgba(255,70,85,0.35);
+  border: 1px solid rgba(216, 53, 74, 0.25);
 }
 .badge {
   padding: 3px 10px;
@@ -174,7 +180,7 @@ body {
 .level-badge {
   padding: 3px 10px;
   border-radius: 6px;
-  background: linear-gradient(135deg, #ff4655, #b8333f);
+  background: var(--accent);
   color: #fff;
   font-size: 13px;
   font-weight: 700;
@@ -188,9 +194,9 @@ body {
   padding: 16px 20px;
   border-radius: 14px;
   border: 1px solid var(--line);
-  background: linear-gradient(135deg, rgba(255,70,85,0.10), rgba(255,255,255,0.02));
+  background: var(--panel);
 }
-.rank-icon { width: 76px; height: 76px; object-fit: contain; flex: none; filter: drop-shadow(0 4px 10px rgba(0,0,0,0.45)); }
+.rank-icon { width: 76px; height: 76px; object-fit: contain; flex: none; }
 .rank-name { font-size: 22px; font-weight: 800; }
 .rr-bar {
   margin-top: 8px;
@@ -200,7 +206,7 @@ body {
   background: var(--panel-2);
   overflow: hidden;
 }
-.rr-bar > i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #ff4655, #ff8b7a); }
+.rr-bar > i { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
 
 /* ---------- 数据格 ---------- */
 .grid {
@@ -212,7 +218,7 @@ body {
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 14px 16px;
-  background: rgba(255,255,255,0.02);
+  background: var(--panel);
 }
 .stat-label { font-size: 12.5px; color: var(--text-mute); letter-spacing: 0.6px; }
 .stat-value { font-size: 25px; font-weight: 800; margin-top: 2px; }
@@ -230,7 +236,7 @@ body {
   padding: 12px 14px;
   border-radius: 12px;
   border: 1px solid var(--line);
-  background: rgba(255,255,255,0.02);
+  background: var(--panel);
   margin-bottom: 10px;
 }
 .map-thumb {
@@ -248,9 +254,9 @@ body {
   font-size: 14px;
   letter-spacing: 1px;
 }
-.is-win { background: rgba(25, 229, 160, 0.14); color: var(--win); border: 1px solid rgba(25,229,160,0.32); }
-.is-lose { background: rgba(255, 70, 85, 0.14); color: var(--lose); border: 1px solid rgba(255,70,85,0.32); }
-.is-draw { background: rgba(139, 154, 167, 0.14); color: var(--text-dim); border: 1px solid var(--line); }
+.is-win { background: rgba(15, 157, 108, 0.10); color: var(--win); border: 1px solid rgba(15, 157, 108, 0.28); }
+.is-lose { background: var(--accent-soft); color: var(--lose); border: 1px solid rgba(216, 53, 74, 0.28); }
+.is-draw { background: var(--panel-2); color: var(--text-dim); border: 1px solid var(--line); }
 
 .kv { text-align: center; min-width: 62px; }
 .kv-label { font-size: 11px; color: var(--text-mute); }
@@ -262,10 +268,10 @@ body {
   border: 1px solid var(--line);
   border-radius: 12px;
   overflow: hidden;
-  background: rgba(255,255,255,0.02);
+  background: var(--panel);
   text-align: center;
 }
-.mini-pic { width: 100%; height: 92px; object-fit: cover; background: var(--panel); }
+.mini-pic { width: 100%; height: 92px; object-fit: cover; background: var(--panel-2); }
 .mini-pic.contain { object-fit: contain; padding: 6px; }
 .mini-name { font-size: 14px; font-weight: 700; padding: 6px 4px 2px; }
 .mini-foot { font-size: 12px; color: var(--text-mute); padding-bottom: 8px; }
@@ -274,18 +280,18 @@ body {
   height: 6px; border-radius: 999px; background: var(--panel-2); overflow: hidden; margin-top: 6px;
 }
 .bar > i { display: block; height: 100%; border-radius: 999px; }
-.bar.win > i { background: linear-gradient(90deg, #19e5a0, #7bf3d0); }
-.bar.kill > i { background: linear-gradient(90deg, #ff4655, #ffab6b); }
+.bar.win > i { background: var(--win); }
+.bar.kill > i { background: var(--accent); }
 
 /* ---------- 回合条 ---------- */
 .round-strip { display: flex; gap: 4px; flex-wrap: wrap; }
 .round-dot {
   width: 16px; height: 16px; border-radius: 4px;
-  border: 1px solid rgba(255,255,255,0.18);
+  border: 1px solid var(--line);
 }
 .round-dot.atk { border-radius: 50%; }
-.round-dot.is-win { background: var(--win); }
-.round-dot.is-lose { background: var(--accent); }
+.round-dot.is-win { background: var(--win); border-color: var(--win); }
+.round-dot.is-lose { background: var(--accent); border-color: var(--accent); }
 
 /* ---------- 表格 ---------- */
 table.team { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -293,8 +299,8 @@ table.team th {
   text-align: left; font-weight: 600; font-size: 12px; color: var(--text-mute);
   padding: 8px 8px; border-bottom: 1px solid var(--line); letter-spacing: 0.4px;
 }
-table.team td { padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); }
-table.team tr.self td { background: rgba(255, 70, 85, 0.10); }
+table.team td { padding: 8px; border-bottom: 1px solid var(--line); }
+table.team tr.self td { background: var(--accent-soft); }
 table.team td.c, table.team th.c { text-align: center; }
 .team-head {
   display: flex; align-items: center; gap: 8px;

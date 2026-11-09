@@ -9,12 +9,12 @@
       display: flex; align-items: center; gap: 18px;
       padding: 20px 26px; border-radius: 16px; margin-bottom: 20px;
       border: 1px solid var(--line);
-      background: linear-gradient(120deg, rgba(255,70,85,0.16), rgba(255,255,255,0.02));
+      background: var(--panel);
     }
     .platform {
       padding: 4px 14px; border-radius: 999px;
       font-size: 14px; font-weight: 800; letter-spacing: 1px;
-      color: #06121a; background: {{accent}};
+      color: #fff; background: {{accent}};
     }
 
     .main { display: flex; gap: 26px; align-items: stretch; }
@@ -26,7 +26,7 @@
       padding: 22px;
       border-radius: 18px;
       background: #fff;
-      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+      border: 1px solid var(--line);
       display: flex; flex-direction: column; align-items: center; justify-content: center;
     }
     /* 各平台给的码尺寸不一样（QQ 111px、微信 301px），放大倍数不是整数时
@@ -35,12 +35,12 @@
     .qr-missing {
       width: 348px; height: 348px;
       display: flex; align-items: center; justify-content: center; text-align: center;
-      color: #b8333f; font-size: 15px; line-height: 1.7;
-      border: 2px dashed #ffc2c7; border-radius: 12px; padding: 20px;
+      color: var(--accent); font-size: 15px; line-height: 1.7;
+      border: 2px dashed #f0b4bd; border-radius: 12px; padding: 20px;
     }
     .qr-caption {
       margin-top: 14px; text-align: center;
-      font-size: 13px; color: #5f7180; letter-spacing: 0.5px;
+      font-size: 13px; color: var(--text-mute); letter-spacing: 0.5px;
     }
 
     .side { flex: 1; display: flex; flex-direction: column; gap: 16px; }
@@ -53,7 +53,7 @@
       margin-bottom: 9px;
       border-radius: 12px;
       border: 1px solid var(--line);
-      background: rgba(255,255,255,0.025);
+      background: var(--panel);
       font-size: 15px;
       line-height: 1.45;
     }
@@ -63,23 +63,23 @@
       width: 26px; height: 26px; border-radius: 8px;
       display: flex; align-items: center; justify-content: center;
       font-size: 13px; font-weight: 800;
-      color: #0f1923; background: {{accent}};
+      color: #fff; background: {{accent}};
     }
     .steps li:last-child { margin-bottom: 0; }
 
     .meta { display: flex; gap: 10px; flex-wrap: wrap; }
     .meta-chip {
       padding: 7px 14px; border-radius: 10px;
-      border: 1px solid var(--line); background: rgba(255,255,255,0.03);
+      border: 1px solid var(--line); background: var(--panel);
       font-size: 13px; color: var(--text-dim);
     }
     .meta-chip b { color: var(--text); font-weight: 700; }
 
     .tip {
       padding: 12px 16px; border-radius: 12px;
-      border: 1px solid rgba(245, 214, 123, 0.28);
-      background: rgba(245, 214, 123, 0.07);
-      font-size: 13px; color: #e8d8a6; line-height: 1.7;
+      border: 1px solid rgba(176, 125, 26, 0.3);
+      background: rgba(176, 125, 26, 0.06);
+      font-size: 13px; color: var(--text-dim); line-height: 1.7;
     }
     .tip b { color: var(--gold); }
     .cmd-inline {
@@ -87,7 +87,7 @@
          DIN / Helvetica / Arial —— 容器里没有系统中文字体，中文会整段变豆腐块。 */
       font-family: 'ValorantCN', 'DIN Alternate', 'Helvetica Neue', Arial, sans-serif;
       padding: 1px 7px; border-radius: 5px;
-      background: rgba(255,255,255,0.08); color: var(--text);
+      background: var(--panel-2); color: var(--text);
       /* 指令整体不折行，否则「#瓦绑定 名称#标签」会被拆成两行，看着像两段 */
       white-space: nowrap;
     }

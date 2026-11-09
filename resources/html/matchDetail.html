@@ -10,9 +10,8 @@
       display: flex; align-items: center; justify-content: space-between;
       padding: 26px 30px;
     }
-    /* 详情页想把地图原画露出来一点，比首页的账号卡更亮 */
-    .hero .hero-bg { opacity: 0.5; }
-    .hero .hero-mask { background: linear-gradient(90deg, rgba(11,20,28,0.92) 30%, rgba(11,20,28,0.45) 70%, rgba(11,20,28,0.15)); }
+    .hero .hero-bg { opacity: 0.16; }
+    .hero .hero-mask { background: linear-gradient(90deg, rgba(255,255,255,0.95) 30%, rgba(255,255,255,0.6) 70%, rgba(255,255,255,0.25)); }
     .score-wrap { display: flex; align-items: center; gap: 24px; }
     .team-score { font-size: 64px; font-weight: 900; letter-spacing: 2px; }
     .vs { font-size: 22px; color: var(--text-mute); }
@@ -24,25 +23,24 @@
     .team-dot {
       width: 8px; height: 8px; border-radius: 50%; flex: none; margin-right: 2px;
     }
-    .team-dot.blue { background: #22c3e6; box-shadow: 0 0 6px rgba(34,195,230,0.65); }
-    .team-dot.red { background: #ff4655; box-shadow: 0 0 6px rgba(255,70,85,0.65); }
+    .team-dot.blue { background: #0d8db8; }
+    .team-dot.red { background: var(--accent); }
 
     /* 我方整行轻微提亮 + 左侧色条，扫一眼就知道哪 5 个是队友 */
-    tr.prow.mine td { background: rgba(255,255,255,0.035); }
-    tr.prow.mine td:first-child { box-shadow: inset 3px 0 0 rgba(255,255,255,0.28); }
+    tr.prow.mine td { background: var(--bg-soft); }
+    tr.prow.mine td:first-child { border-left: 3px solid var(--text-mute); }
 
     .me-chip, .mate-chip {
       display: inline-block; margin-left: 5px; padding: 0 5px;
       border-radius: 3px; font-size: 10px; font-weight: 700; vertical-align: 1px;
     }
-    .me-chip { background: #ff4655; color: #fff; }
-    .mate-chip { background: rgba(255,255,255,0.14); color: #cfd8df; }
+    .me-chip { background: var(--accent); color: #fff; }
+    .mate-chip { background: var(--panel-2); color: var(--text-dim); }
 
     .mvp-chip {
       display: inline-block; padding: 2px 8px; border-radius: 5px;
-      background: linear-gradient(180deg, #ffd76e, #dfa32b);
+      background: #e8b23a;
       color: #2b1c00; font-size: 13px; font-weight: 800; letter-spacing: 0.8px;
-      box-shadow: 0 0 10px rgba(255,200,80,0.35);
     }
     .rank-badge { color: var(--text-mute); font-size: 13px; font-weight: 600; }
 

@@ -9,7 +9,7 @@
       display: flex; align-items: center; gap: 18px;
       padding: 18px 22px; border-radius: 16px;
       border: 1px solid var(--line);
-      background: linear-gradient(120deg, rgba(255,70,85,0.14), rgba(255,255,255,0.02));
+      background: var(--panel);
     }
     .hero-bar img { width: 64px; height: 64px; border-radius: 50%; border: 2px solid var(--accent); object-fit: cover; }
     .meta { display: flex; align-items: center; gap: 10px; flex: none; }
@@ -18,16 +18,15 @@
     .st-label { font-size: 11px; color: var(--text-mute); }
     .st-value { font-size: 17px; font-weight: 700; }
 
-    /* 本局全场最佳：金色，跟「胜利/失败」的红绿区分开，一眼能扫到 */
+    /* 本局全场最佳：纯金色块，跟「胜利/失败」的红绿区分开，一眼能扫到 */
     .mvp-chip {
       display: inline-block; margin-left: 6px; padding: 1px 6px;
       border-radius: 4px; vertical-align: 1px;
-      background: linear-gradient(180deg, #ffd76e, #dfa32b);
+      background: #e8b23a;
       color: #2b1c00; font-size: 11px; font-weight: 800; letter-spacing: 0.6px;
-      box-shadow: 0 0 8px rgba(255,200,80,0.35);
     }
     /* 不是 MVP 但知道名次时给个低调的「#3」，信息量比留空高 */
-    .rank-chip { margin-left: 6px; color: #8b9aa7; font-size: 11px; font-weight: 600; vertical-align: 1px; }
+    .rank-chip { margin-left: 6px; color: var(--text-mute); font-size: 11px; font-weight: 600; vertical-align: 1px; }
   </style>
 </head>
 <body>
