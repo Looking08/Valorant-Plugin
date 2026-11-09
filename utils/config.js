@@ -52,6 +52,22 @@ export function display () {
   }
 }
 
+/** 出图（主题 / 背景皮肤）配置 */
+export function view () {
+  const c = all()
+  const r = c.render || {}
+  const rawVeil = Number(r.veil)
+
+  return {
+    // 主题：light = 亮色（默认）/ dark = VALORANT 客户端深色
+    theme: r.theme === 'dark' ? 'dark' : 'light',
+    // false = 不用背景图；'all' = 每次随机；其它字符串 = 固定某张（见 utils/background.js）
+    background: r.background === false ? false : String(r.background ?? 'all'),
+    // 白纱浓度：0 完全露出背景图，1 等于纯色底（图看不见了）；深色主题下是深纱
+    veil: Number.isFinite(rawVeil) ? Math.min(Math.max(rawVeil, 0), 1) : 0.72
+  }
+}
+
 /** 指令配置 */
 export function command () {
   const c = all()

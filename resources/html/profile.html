@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <title>无畏契约 · 数据面板</title>
   <link rel="stylesheet" href="{{@res}}css/base.css">
+  <!-- render.theme / render.background 由渲染层注入（亮暗主题 / 背景图） -->
+  <style>{{@viewStyle}}</style>
   <style>
     .hero-inner { padding: 24px 28px; }
     .split { display: flex; gap: 14px; }
@@ -18,7 +20,7 @@
     .trend-label { font-size: 11px; color: var(--text-mute); }
   </style>
 </head>
-<body>
+<body class="{{themeClass}}">
 <div id="container">
 
   <!-- 头部：账号卡 -->

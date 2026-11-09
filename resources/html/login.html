@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <title>无畏契约插件 · 扫码登录</title>
   <link rel="stylesheet" href="{{@res}}css/base.css">
+  <!-- render.theme / render.background 由渲染层注入（亮暗主题 / 背景图） -->
+  <style>{{@viewStyle}}</style>
   <style>
     .head {
       display: flex; align-items: center; gap: 18px;
@@ -93,7 +95,7 @@
     }
   </style>
 </head>
-<body>
+<body class="{{themeClass}}">
 <div id="container">
 
   <div class="head">

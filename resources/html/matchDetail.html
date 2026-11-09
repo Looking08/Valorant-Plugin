@@ -4,14 +4,16 @@
   <meta charset="UTF-8">
   <title>无畏契约 · 单局详情</title>
   <link rel="stylesheet" href="{{@res}}css/base.css">
+  <!-- render.theme / render.background 由渲染层注入（亮暗主题 / 背景图） -->
+  <style>{{@viewStyle}}</style>
   <style>
     .hero {
       min-height: 190px;
       display: flex; align-items: center; justify-content: space-between;
       padding: 26px 30px;
     }
-    .hero .hero-bg { opacity: 0.16; }
-    .hero .hero-mask { background: linear-gradient(90deg, rgba(255,255,255,0.95) 30%, rgba(255,255,255,0.6) 70%, rgba(255,255,255,0.25)); }
+    .hero .hero-bg { opacity: var(--hero-detail-opacity); }
+    .hero .hero-mask { background: var(--hero-mask); }
     .score-wrap { display: flex; align-items: center; gap: 24px; }
     .team-score { font-size: 64px; font-weight: 900; letter-spacing: 2px; }
     .vs { font-size: 22px; color: var(--text-mute); }
@@ -23,8 +25,8 @@
     .team-dot {
       width: 8px; height: 8px; border-radius: 50%; flex: none; margin-right: 2px;
     }
-    .team-dot.blue { background: #0d8db8; }
-    .team-dot.red { background: var(--accent); }
+    .team-dot.blue { background: var(--dot-blue); }
+    .team-dot.red { background: var(--dot-red); }
 
     /* 我方整行轻微提亮 + 左侧色条，扫一眼就知道哪 5 个是队友 */
     tr.prow.mine td { background: var(--bg-soft); }
@@ -49,7 +51,7 @@
     .legend + .legend { margin-left: 14px; }
   </style>
 </head>
-<body>
+<body class="{{themeClass}}">
 <div id="container">
 
   <div class="hero">

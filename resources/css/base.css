@@ -1,5 +1,5 @@
 /*
- * 通用样式 —— 亮色主题。
+ * 通用样式 —— 亮色主题（默认）。
  *
  * 刻意**不用** Tailwind CDN 之类的外部依赖：机器人所在服务器不一定通外网，
  * 样式库加载失败会让整张图变成一堆裸 HTML —— 自包含 CSS 最稳。
@@ -12,6 +12,15 @@
  *   3. **无光特效**：不用 radial-gradient 光晕、不用 box-shadow 发光、
  *      不用 linear-gradient 渐变条。所有条/点/徽标一律纯色。
  *   4. 数值一律等宽数字（tabular-nums），标签与数值的层级用字号和字重区分。
+ *
+ * 主题（config → render.theme）：
+ *   light（默认，本文件 :root）/ dark（文件末尾 body.theme-dark 一段，
+ *   恢复 VALORANT 客户端深色配色）。模板 body 上按配置挂 theme-dark 类。
+ *
+ * 背景图（可选，来自 PR #2 的思路）：
+ *   `resources/bg/` 里有图时，模板内联 `:root{--bg-img:url(../bg/x.jpg);--bg-veil:.72}`，
+ *   body 把图铺满并在上面盖一层纱（亮色主题白纱、深色主题深纱，颜色随主题走）。
+ *   没图时 `--bg-img:none`，就是纯色底。
  */
 
 /*
@@ -40,19 +49,36 @@
 }
 
 :root {
+  /* 底 / 卡片 */
   --bg: #f4f6f8;
   --bg-soft: #eef1f4;
   --panel: #ffffff;
   --panel-2: #f0f3f6;
   --line: #e3e7ec;
+  /* 字 */
   --text: #1c2733;
   --text-dim: #5c6b7a;
   --text-mute: #8b97a3;
+  /* 色（强调红压深到白底 4.5:1 对比度） */
   --accent: #d8354a;
   --accent-soft: rgba(216, 53, 74, 0.07);
+  --accent-line: rgba(216, 53, 74, 0.25);
   --win: #0f9d6c;
+  --win-soft: rgba(15, 157, 108, 0.10);
   --lose: #d8354a;
+  --lose-soft: rgba(216, 53, 74, 0.10);
   --gold: #b07d1a;
+  /* hero 区：背景图浓度 / 可读性遮罩（白→透明，功能性遮罩非光效） */
+  --hero-bg-opacity: 0.10;
+  --hero-detail-opacity: 0.16;
+  --hero-mask: linear-gradient(90deg, rgba(255,255,255,0.96) 32%, rgba(255,255,255,0.72) 72%, rgba(255,255,255,0.45));
+  /* 详情页队伍色点（蓝队 / 红队） */
+  --dot-blue: #0d8db8;
+  --dot-red: #d8354a;
+  /* 背景图纱的颜色（亮色主题 = 白纱）；背景图本身由模板内联注入 */
+  --veil-rgb: 255, 255, 255;
+  --bg-img: none;
+  --bg-veil: 0;
 }
 
 * { box-sizing: border-box; }
@@ -61,8 +87,15 @@ body {
   width: 1180px;
   margin: 0;
   padding: 0;
-  background: var(--bg);
   color: var(--text);
+  background-color: var(--bg);
+  /* 有背景图时：图铺满（cover），上面盖一层主题色纱调低对比，保证文字可读 */
+  background-image:
+    linear-gradient(rgba(var(--veil-rgb), var(--bg-veil)), rgba(var(--veil-rgb), var(--bg-veil))),
+    var(--bg-img);
+  background-size: auto, cover;
+  background-position: 0 0, center;
+  background-repeat: repeat, no-repeat;
   font-family: 'ValorantCN', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', -apple-system, sans-serif;
   font-size: 16px;
   line-height: 1.5;
@@ -72,7 +105,7 @@ body {
 #container {
   width: 1180px;
   padding: 32px 36px 26px;
-  background: var(--bg);
+  /* 不设底色：有背景图时得让 body 的图透上来 */
 }
 
 /* ---------- 通用块 ---------- */
@@ -135,12 +168,12 @@ body {
   inset: 0;
   background-size: cover;
   background-position: center 28%;
-  opacity: 0.10;
+  opacity: var(--hero-bg-opacity);
 }
 .hero-mask {
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, rgba(255,255,255,0.96) 32%, rgba(255,255,255,0.72) 72%, rgba(255,255,255,0.45));
+  background: var(--hero-mask);
 }
 .hero-inner {
   position: relative;
@@ -167,7 +200,7 @@ body {
   color: var(--accent);
   font-size: 14px;
   font-weight: 700;
-  border: 1px solid rgba(216, 53, 74, 0.25);
+  border: 1px solid var(--accent-line);
 }
 .badge {
   padding: 3px 10px;
@@ -226,7 +259,7 @@ body {
 
 .high { color: var(--win); }
 .mid { color: var(--gold); }
-.low { color: var(--accent); }
+.low { color: var(--lose); }
 
 /* ---------- 列表 ---------- */
 .list-row {
@@ -254,8 +287,8 @@ body {
   font-size: 14px;
   letter-spacing: 1px;
 }
-.is-win { background: rgba(15, 157, 108, 0.10); color: var(--win); border: 1px solid rgba(15, 157, 108, 0.28); }
-.is-lose { background: var(--accent-soft); color: var(--lose); border: 1px solid rgba(216, 53, 74, 0.28); }
+.is-win { background: var(--win-soft); color: var(--win); border: 1px solid var(--win-soft); }
+.is-lose { background: var(--lose-soft); color: var(--lose); border: 1px solid var(--lose-soft); }
 .is-draw { background: var(--panel-2); color: var(--text-dim); border: 1px solid var(--line); }
 
 .kv { text-align: center; min-width: 62px; }
@@ -317,3 +350,34 @@ table.team td.c, table.team th.c { text-align: center; }
 }
 
 .empty { padding: 40px; text-align: center; color: var(--text-mute); }
+
+/* ============================================================
+ * 深色主题（config → render.theme: dark）
+ * 恢复 VALORANT 客户端的深色配色；模板 body 挂 .theme-dark 即生效。
+ * 只覆盖变量，不动组件结构。
+ * ============================================================ */
+body.theme-dark {
+  --bg: #0f1923;
+  --bg-soft: #16232e;
+  --panel: #1b2a37;
+  --panel-2: #22333f;
+  --line: #2b3d4c;
+  --text: #ece8e1;
+  --text-dim: #8b9aa7;
+  --text-mute: #5f7180;
+  --accent: #ff4655;
+  --accent-soft: rgba(255, 70, 85, 0.16);
+  --accent-line: rgba(255, 70, 85, 0.35);
+  --win: #19e5a0;
+  --win-soft: rgba(25, 229, 160, 0.14);
+  --lose: #ff4655;
+  --lose-soft: rgba(255, 70, 85, 0.14);
+  --gold: #f5d67b;
+  --hero-bg-opacity: 0.32;
+  --hero-detail-opacity: 0.5;
+  --hero-mask: linear-gradient(90deg, rgba(11,20,28,0.94) 32%, rgba(11,20,28,0.55) 72%, rgba(11,20,28,0.2));
+  --dot-blue: #22c3e6;
+  --dot-red: #ff4655;
+  /* 背景图上盖深纱，跟深色底协调 */
+  --veil-rgb: 15, 25, 35;
+}

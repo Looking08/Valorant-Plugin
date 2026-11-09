@@ -26,6 +26,8 @@ import path from 'node:path'
 import { PluginRes } from '#components'
 import { getLastProvider } from './gateway.js'
 import { dateTime } from './format.js'
+import { view } from './config.js'
+import { pickBackground } from './background.js'
 
 /** 模板里引用 resources/ 用的前缀 */
 export const RES = templatePathLike(PluginRes)
@@ -55,6 +57,14 @@ async function yunzaiRender (ctx) {
   const puppeteer = (await import('../../../lib/puppeteer/puppeteer.js')).default
   if (!puppeteer?.screenshot) throw new Error('云崽渲染器不可用（lib/puppeteer/puppeteer.js）')
 
+  // 主题 + 背景皮肤：背景图每次出图重新挑（新丢进 resources/bg 的图立刻能用，
+  // 不用重启）。viewStyle 内联成 :root{--bg-img:url(...);--bg-veil:...}，
+  // 交给 base.css 铺满 + 盖纱；veil 只在有背景图时注入，纯色底不会被洗白。
+  const bg = pickBackground()
+  const css = view()
+  const viewStyle = bg ? `:root{--bg-img:url('${bg.url}');--bg-veil:${css.veil}}` : ''
+  const themeClass = css.theme === 'dark' ? 'theme-dark' : ''
+
   return puppeteer.screenshot(ctx.name, {
     tplFile: `plugins/Valorant-Plugin/resources/html/${ctx.tpl}`,
     quality: ctx.opts.quality || 90,
@@ -64,6 +74,8 @@ async function yunzaiRender (ctx) {
     res: ctx.res,
     provider: getLastProvider() || '',
     updatedAt: dateTime(Date.now()),
+    viewStyle,
+    themeClass,
     ...ctx.data
   })
 }

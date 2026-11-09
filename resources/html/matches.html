@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <title>无畏契约 · 最近战绩</title>
   <link rel="stylesheet" href="{{@res}}css/base.css">
+  <!-- render.theme / render.background 由渲染层注入（亮暗主题 / 背景图） -->
+  <style>{{@viewStyle}}</style>
   <style>
     .hero-bar {
       display: flex; align-items: center; gap: 18px;
@@ -29,7 +31,7 @@
     .rank-chip { margin-left: 6px; color: var(--text-mute); font-size: 11px; font-weight: 600; vertical-align: 1px; }
   </style>
 </head>
-<body>
+<body class="{{themeClass}}">
 <div id="container">
 
   <div class="hero-bar">

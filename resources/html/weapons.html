@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <title>无畏契约 · 枪械熟练度</title>
   <link rel="stylesheet" href="{{@res}}css/base.css">
+  <!-- render.theme / render.background 由渲染层注入（亮暗主题 / 背景图） -->
+  <style>{{@viewStyle}}</style>
   <style>
     .top-bar {
       display: flex; align-items: center; justify-content: space-between;
@@ -23,7 +25,7 @@
     .w-value { font-size: 15px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
   </style>
 </head>
-<body>
+<body class="{{themeClass}}">
 <div id="container">
 
   <div class="top-bar">
