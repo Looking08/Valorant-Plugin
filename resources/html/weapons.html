@@ -4,18 +4,20 @@
   <meta charset="UTF-8">
   <title>无畏契约 · 枪械熟练度</title>
   <link rel="stylesheet" href="{{@res}}css/base.css">
+  <style>:root{--bg-veil:{{bgVeil}};--bg-blur:{{bgBlur}}px}{{if bg}}:root{--bg-img:url('{{@bg}}')}{{/if}}</style>
   <style>
     .top-bar {
       display: flex; align-items: center; justify-content: space-between;
       padding: 18px 22px; border-radius: 16px;
       border: 1px solid var(--line);
-      background: linear-gradient(120deg, rgba(255,70,85,0.14), rgba(255,255,255,0.02));
+      background: linear-gradient(120deg, var(--accent-soft), var(--card-soft));
+      box-shadow: var(--shadow);
     }
     .w-row {
       display: flex; align-items: center; gap: 12px;
       padding: 10px 14px; margin-bottom: 8px;
       border-radius: 12px; border: 1px solid var(--line);
-      background: rgba(255,255,255,0.02);
+      background: var(--card);
     }
     .w-icon { width: 108px; height: 42px; object-fit: contain; flex: none; }
     .w-cell { text-align: center; white-space: nowrap; }

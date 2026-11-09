@@ -52,6 +52,23 @@ export function display () {
   }
 }
 
+/** 出图（背景皮肤 / 毛玻璃）配置 */
+export function view () {
+  const c = all()
+  const r = c.render || {}
+  const rawVeil = Number(r.veil)
+  const rawBlur = Number(r.blur)
+
+  return {
+    // false = 不用背景图；'all' = 每次随机；其它字符串 = 固定某张（见 utils/background.js）
+    background: r.background === false ? false : String(r.background ?? 'all'),
+    // 白纱浓度：0 完全露出背景图，1 等于纯白（图看不见了）
+    veil: Number.isFinite(rawVeil) ? Math.min(Math.max(rawVeil, 0), 1) : 0.72,
+    // 卡片毛玻璃；0 = 关掉（低配机器/出图慢时可以设 0）
+    blur: Number.isFinite(rawBlur) ? Math.min(Math.max(rawBlur, 0), 40) : 12
+  }
+}
+
 /** 指令配置 */
 export function command () {
   const c = all()

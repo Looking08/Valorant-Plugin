@@ -4,7 +4,13 @@
  * 刻意**不用** Tailwind CDN 之类的外部依赖：机器人所在服务器不一定通外网，
  * 样式库加载失败会让整张图变成一堆裸 HTML —— 自包含 CSS 最稳。
  *
- * 配色沿用 VALORANT 客户端：底色 #0F1923，强调色 #FF4655，胜利青绿、失败红。
+ * 配色是浅色暖白（#fdf9f1 → #d7d9d1 的斜向过渡 + 红/橙/蓝三处低饱和光晕），
+ * 强调色沿用 VALORANT 的红 #FF4655。所有颜色都走变量，换主题只改变量。
+ *
+ * 背景图（可选）：
+ *   出图时若 `resources/bg/` 里有图片，模板会内联一段
+ *   `:root{--bg-img:url(...);--bg-veil:.72}`，body 把图铺满并在上面盖一层白纱。
+ *   没图时 `--bg-img:none`、`--bg-veil:0`，退化成纯渐变底色。
  */
 
 /*
@@ -33,19 +39,28 @@
 }
 
 :root {
-  --bg: #0f1923;
-  --bg-soft: #16232e;
-  --panel: #1b2a37;
-  --panel-2: #22333f;
-  --line: #2b3d4c;
-  --text: #ece8e1;
-  --text-dim: #8b9aa7;
-  --text-mute: #5f7180;
+  /* 底 */
+  --bg: #f7f2e9;
+  --card: rgba(255, 255, 255, 0.76);
+  --card-soft: rgba(255, 255, 255, 0.60);
+  --chip: rgba(24, 38, 50, 0.055);
+  --line: rgba(24, 38, 50, 0.10);
+  --line-soft: rgba(24, 38, 50, 0.06);
+  /* 字 */
+  --text: #1b2733;
+  --text-dim: #5b6b78;
+  --text-mute: #8493a0;
+  /* 色 */
   --accent: #ff4655;
-  --accent-soft: rgba(255, 70, 85, 0.16);
-  --win: #19e5a0;
-  --lose: #ff4655;
-  --gold: #f5d67b;
+  --accent-soft: rgba(255, 70, 85, 0.12);
+  --win: #0f9d6e;
+  --lose: #e03a49;
+  --gold: #b07d18;
+  --shadow: 0 8px 22px rgba(31, 45, 61, 0.07);
+  /* 背景图（由模板内联覆盖） */
+  --bg-img: none;
+  --bg-veil: 0;
+  --bg-blur: 12px;
 }
 
 * { box-sizing: border-box; }
@@ -54,8 +69,19 @@ body {
   width: 1180px;
   margin: 0;
   padding: 0;
-  background: var(--bg);
   color: var(--text);
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(rgba(255, 255, 255, var(--bg-veil)), rgba(255, 255, 255, var(--bg-veil))),
+    var(--bg-img),
+    radial-gradient(640px 380px at -2% -12%, rgba(255, 70, 85, 0.20), transparent 62%),
+    radial-gradient(600px 340px at 102% -10%, rgba(255, 146, 60, 0.20), transparent 62%),
+    radial-gradient(720px 420px at 92% 106%, rgba(56, 96, 140, 0.16), transparent 64%),
+    linear-gradient(152deg, #fdf9f1 0%, #f6ecda 36%, #e9e0cd 66%, #d7d9d1 100%);
+  background-size: cover, cover, cover, cover, cover, cover;
+  background-position: center, center top, center, center, center, center;
+  background-repeat: no-repeat;
+  background-attachment: scroll;
   font-family: 'ValorantCN', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', -apple-system, sans-serif;
   font-size: 16px;
   line-height: 1.5;
@@ -65,18 +91,17 @@ body {
 #container {
   width: 1180px;
   padding: 36px 40px 30px;
-  background:
-    radial-gradient(1200px 400px at 15% -10%, rgba(255, 70, 85, 0.16), transparent 60%),
-    radial-gradient(900px 300px at 95% 0%, rgba(12, 232, 232, 0.10), transparent 55%),
-    var(--bg);
 }
 
 /* ---------- 通用块 ---------- */
 .card {
-  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 18px 20px;
+  box-shadow: var(--shadow);
+  -webkit-backdrop-filter: blur(var(--bg-blur));
+  backdrop-filter: blur(var(--bg-blur));
 }
 
 .section-title {
@@ -122,19 +147,22 @@ body {
   border: 1px solid var(--line);
   border-radius: 16px;
   overflow: hidden;
-  background: var(--bg-soft);
+  background: var(--card);
+  box-shadow: var(--shadow);
+  -webkit-backdrop-filter: blur(var(--bg-blur));
+  backdrop-filter: blur(var(--bg-blur));
 }
 .hero-bg {
   position: absolute;
   inset: 0;
   background-size: cover;
   background-position: center 28%;
-  opacity: 0.32;
+  opacity: 0.30;
 }
 .hero-mask {
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, rgba(11,20,28,0.94) 32%, rgba(11,20,28,0.55) 72%, rgba(11,20,28,0.2));
+  background: linear-gradient(90deg, rgba(253, 250, 245, 0.96) 26%, rgba(253, 250, 245, 0.86) 60%, rgba(253, 250, 245, 0.66));
 }
 .hero-inner {
   position: relative;
@@ -149,7 +177,7 @@ body {
   border-radius: 50%;
   border: 3px solid var(--accent);
   object-fit: cover;
-  background: var(--panel);
+  background: #fff;
   flex: none;
 }
 .name-row { display: flex; align-items: center; gap: 12px; }
@@ -161,12 +189,12 @@ body {
   color: var(--accent);
   font-size: 14px;
   font-weight: 700;
-  border: 1px solid rgba(255,70,85,0.35);
+  border: 1px solid rgba(255, 70, 85, 0.32);
 }
 .badge {
   padding: 3px 10px;
   border-radius: 6px;
-  background: var(--panel-2);
+  background: var(--chip);
   border: 1px solid var(--line);
   font-size: 13px;
   color: var(--text-dim);
@@ -174,7 +202,7 @@ body {
 .level-badge {
   padding: 3px 10px;
   border-radius: 6px;
-  background: linear-gradient(135deg, #ff4655, #b8333f);
+  background: linear-gradient(135deg, #ff4655, #d0343f);
   color: #fff;
   font-size: 13px;
   font-weight: 700;
@@ -188,19 +216,31 @@ body {
   padding: 16px 20px;
   border-radius: 14px;
   border: 1px solid var(--line);
-  background: linear-gradient(135deg, rgba(255,70,85,0.10), rgba(255,255,255,0.02));
+  background: linear-gradient(135deg, var(--accent-soft), var(--card-soft));
+  box-shadow: var(--shadow);
+  -webkit-backdrop-filter: blur(var(--bg-blur));
+  backdrop-filter: blur(var(--bg-blur));
 }
-.rank-icon { width: 76px; height: 76px; object-fit: contain; flex: none; filter: drop-shadow(0 4px 10px rgba(0,0,0,0.45)); }
+.rank-icon {
+  width: 76px; height: 76px;
+  object-fit: contain;
+  flex: none;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.18));
+}
 .rank-name { font-size: 22px; font-weight: 800; }
 .rr-bar {
   margin-top: 8px;
   height: 8px;
   width: 260px;
   border-radius: 999px;
-  background: var(--panel-2);
+  background: var(--chip);
   overflow: hidden;
 }
-.rr-bar > i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #ff4655, #ff8b7a); }
+.rr-bar > i {
+  display: block; height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ff4655, #ff8b7a);
+}
 
 /* ---------- 数据格 ---------- */
 .grid {
@@ -212,7 +252,8 @@ body {
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 14px 16px;
-  background: rgba(255,255,255,0.02);
+  background: var(--card);
+  box-shadow: var(--shadow);
 }
 .stat-label { font-size: 12.5px; color: var(--text-mute); letter-spacing: 0.6px; }
 .stat-value { font-size: 25px; font-weight: 800; margin-top: 2px; }
@@ -220,7 +261,7 @@ body {
 
 .high { color: var(--win); }
 .mid { color: var(--gold); }
-.low { color: var(--accent); }
+.low { color: var(--lose); }
 
 /* ---------- 列表 ---------- */
 .list-row {
@@ -230,8 +271,9 @@ body {
   padding: 12px 14px;
   border-radius: 12px;
   border: 1px solid var(--line);
-  background: rgba(255,255,255,0.02);
+  background: var(--card);
   margin-bottom: 10px;
+  box-shadow: 0 4px 14px rgba(31, 45, 61, 0.05);
 }
 .map-thumb {
   width: 84px; height: 48px;
@@ -248,9 +290,9 @@ body {
   font-size: 14px;
   letter-spacing: 1px;
 }
-.is-win { background: rgba(25, 229, 160, 0.14); color: var(--win); border: 1px solid rgba(25,229,160,0.32); }
-.is-lose { background: rgba(255, 70, 85, 0.14); color: var(--lose); border: 1px solid rgba(255,70,85,0.32); }
-.is-draw { background: rgba(139, 154, 167, 0.14); color: var(--text-dim); border: 1px solid var(--line); }
+.is-win { background: rgba(15, 157, 110, 0.12); color: var(--win); border: 1px solid rgba(15, 157, 110, 0.28); }
+.is-lose { background: rgba(224, 58, 73, 0.10); color: var(--lose); border: 1px solid rgba(224, 58, 73, 0.26); }
+.is-draw { background: var(--chip); color: var(--text-dim); border: 1px solid var(--line); }
 
 .kv { text-align: center; min-width: 62px; }
 .kv-label { font-size: 11px; color: var(--text-mute); }
@@ -262,30 +304,31 @@ body {
   border: 1px solid var(--line);
   border-radius: 12px;
   overflow: hidden;
-  background: rgba(255,255,255,0.02);
+  background: var(--card);
   text-align: center;
+  box-shadow: 0 4px 14px rgba(31, 45, 61, 0.05);
 }
-.mini-pic { width: 100%; height: 92px; object-fit: cover; background: var(--panel); }
+.mini-pic { width: 100%; height: 92px; object-fit: cover; background: var(--chip); }
 .mini-pic.contain { object-fit: contain; padding: 6px; }
 .mini-name { font-size: 14px; font-weight: 700; padding: 6px 4px 2px; }
 .mini-foot { font-size: 12px; color: var(--text-mute); padding-bottom: 8px; }
 
 .bar {
-  height: 6px; border-radius: 999px; background: var(--panel-2); overflow: hidden; margin-top: 6px;
+  height: 6px; border-radius: 999px; background: var(--chip); overflow: hidden; margin-top: 6px;
 }
 .bar > i { display: block; height: 100%; border-radius: 999px; }
-.bar.win > i { background: linear-gradient(90deg, #19e5a0, #7bf3d0); }
-.bar.kill > i { background: linear-gradient(90deg, #ff4655, #ffab6b); }
+.bar.win > i { background: linear-gradient(90deg, #12b981, #6fe0b8); }
+.bar.kill > i { background: linear-gradient(90deg, #e83d4d, #ffab6b); }
 
 /* ---------- 回合条 ---------- */
 .round-strip { display: flex; gap: 4px; flex-wrap: wrap; }
 .round-dot {
   width: 16px; height: 16px; border-radius: 4px;
-  border: 1px solid rgba(255,255,255,0.18);
+  border: 1px solid rgba(24, 38, 50, 0.16);
 }
 .round-dot.atk { border-radius: 50%; }
-.round-dot.is-win { background: var(--win); }
-.round-dot.is-lose { background: var(--accent); }
+.round-dot.is-win { background: var(--win); border-color: transparent; }
+.round-dot.is-lose { background: var(--accent); border-color: transparent; }
 
 /* ---------- 表格 ---------- */
 table.team { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -293,8 +336,8 @@ table.team th {
   text-align: left; font-weight: 600; font-size: 12px; color: var(--text-mute);
   padding: 8px 8px; border-bottom: 1px solid var(--line); letter-spacing: 0.4px;
 }
-table.team td { padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); }
-table.team tr.self td { background: rgba(255, 70, 85, 0.10); }
+table.team td { padding: 8px; border-bottom: 1px solid var(--line-soft); }
+table.team tr.self td { background: var(--accent-soft); }
 table.team td.c, table.team th.c { text-align: center; }
 .team-head {
   display: flex; align-items: center; gap: 8px;

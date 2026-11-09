@@ -10,7 +10,10 @@ import {
   getLastProvider,
   gateway,
   staticApi,
-  getCollection
+  getCollection,
+  listBackgrounds,
+  bgDir,
+  view
 } from '#utils'
 
 export class ValorantSystem extends plugin {
@@ -22,9 +25,37 @@ export class ValorantSystem extends plugin {
       priority: 1000,
       rule: [
         { reg: '^#?瓦(状态|数据源状态)$', fnc: 'status' },
+        { reg: '^#?瓦(出图)?背景$', fnc: 'backgrounds' },
         { reg: '^#?瓦(强制)?清缓存$', fnc: 'clear', permission: 'master' }
       ]
     })
+  }
+
+  async backgrounds (e) {
+    const list = listBackgrounds()
+    const cfg = view()
+    const lines = ['【出图背景】', '']
+    lines.push(`· 目录：${bgDir()}`)
+
+    if (!list.length) {
+      lines.push('· 当前：暖白渐变底（目录里还没有图片）')
+      lines.push('', '丢一张图片进上面的目录就能用，尺寸随意，出图按铺满裁切。')
+    } else {
+      const mode = cfg.background === false
+        ? '已关闭（用暖白渐变）'
+        : cfg.background === 'all'
+          ? `随机（共 ${list.length} 张）`
+          : `固定：${cfg.background}`
+      lines.push(`· 当前：${mode}`)
+      lines.push(`· 白纱 ${cfg.veil} / 毛玻璃 ${cfg.blur}px`)
+      lines.push('')
+      list.forEach((file, i) => lines.push(`${i + 1}. ${file}`))
+    }
+
+    lines.push('', '换背景：config/config.yaml → render.background')
+    lines.push('调深浅：render.veil（字看不清就调大，图想更明显就调小）')
+    await e.reply(lines.join('\n'))
+    return true
   }
 
   async status (e) {
