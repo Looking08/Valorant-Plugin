@@ -23,6 +23,8 @@ import {
   winRateLevel,
   regionText,
   display,
+  credentialUser,
+  queryAccount,
   replyImage
 } from '#utils'
 
@@ -54,7 +56,7 @@ export class ValorantProfile extends plugin {
 
     let data
     try {
-      data = await getProfile(account.id, account.region, e.user_id)
+      data = await getProfile(queryAccount(account), account.region, credentialUser(account, e.user_id))
     } catch (error) {
       if (error instanceof GatewayError) await e.reply(error.message)
       else {

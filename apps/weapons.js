@@ -23,6 +23,8 @@ import {
   thousands,
   regionText,
   display,
+  credentialUser,
+  queryAccount,
   replyImage
 } from '#utils'
 
@@ -112,10 +114,11 @@ export class ValorantWeapons extends plugin {
     let data
     try {
       data = await getWeapons({
-        account: account.id,
+        account: queryAccount(account),
         region: account.region,
         count: cfg.weaponsMax,
-        user: e.user_id
+        // 按掌瓦号绑定的账号，取数要落到登记人那份登录态上
+        user: credentialUser(account, e.user_id)
       })
     } catch (error) {
       if (error instanceof GatewayError) await e.reply(error.message)

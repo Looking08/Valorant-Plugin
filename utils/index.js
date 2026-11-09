@@ -7,6 +7,7 @@
 export * from './config.js'
 export * from './cache.js'
 export * from './store.js'
+export * from './campid.js'
 export * from './staticData.js'
 export * from './account.js'
 export * from './gateway.js'

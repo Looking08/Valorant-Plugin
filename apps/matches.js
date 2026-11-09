@@ -15,6 +15,9 @@ import {
   UnknownPeer,
   asset,
   assets,
+  credentialUser,
+  queryAccount,
+  getCurrentAccount,
   GatewayError,
   pct01,
   round,
@@ -141,7 +144,13 @@ export class ValorantMatches extends plugin {
 
     let data
     try {
-      data = await getMatches({ account: account.id, region: account.region, count, user: e.user_id })
+      // user = 用哪份登录态取数：按掌瓦号绑定的账号要落到登记人那份上
+      data = await getMatches({
+        account: queryAccount(account),
+        region: account.region,
+        count,
+        user: credentialUser(account, e.user_id)
+      })
     } catch (error) {
       if (error instanceof GatewayError) await e.reply(error.message)
       else {
@@ -201,11 +210,19 @@ export class ValorantMatches extends plugin {
     }
 
     const brief = cache.list[index]
+    // 这份列表是谁的：优先用当前绑定的账号，退回到列表里记的那个。
+    // 掌瓦号绑定的账号查「自己」，queryAccount 会把它换成空串；
+    // 登录态同理用登记者那份（campUser）。
+    const owner = getCurrentAccount(e.user_id) || { id: cache.accountId || brief.accountId || '' }
     let data
     try {
       // 传「这份列表是谁的」而不是列表行里的 id：查别人的战绩时，
-      // 网关要靠这个昵称找到他的 scene 才打得开记分板
-      data = await getMatch(brief.matchId, cache.accountId || brief.accountId || '', e.user_id)
+      // 网关要靠这个昵称找到他的 scene 才打得开记分板。
+      data = await getMatch(
+        brief.matchId,
+        queryAccount(owner),
+        credentialUser(owner, e.user_id)
+      )
     } catch (error) {
       if (error instanceof GatewayError) await e.reply(error.message)
       else {
